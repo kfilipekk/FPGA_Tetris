@@ -1,0 +1,46 @@
+//Copyright (C)2014-2024 Gowin Semiconductor Corporation.
+//All rights reserved.
+//File Title: Physical Constraints file
+//Tool Version: V1.9.11.03
+//Part Number: GW1NR-LV9QN88PC6/I5
+//Device: GW1NR-9
+//Device Version: C
+//Created Time: 2025-10-29
+
+//⚠️  WARNING: SPI LCD PIN CONFIGURATION REQUIRED! ⚠️
+//The SPI LCD pins below are EXAMPLES for Tang Nano 9K LCD addon.
+//YOU MUST verify and update these pins to match YOUR specific LCD module!
+//Check your LCD addon documentation for correct pinout.
+//Common LCD signals: CLK, MOSI/SDI, DC/RS, CS, RST, BL/LED
+
+//Clock and reset
+IO_LOC "clk_27mhz" 52;
+IO_PORT "clk_27mhz" PULL_MODE=UP;
+IO_LOC "reset_btn" 4;
+IO_PORT "reset_btn" PULL_MODE=UP;
+
+//Buttons (S1 and S2 on Tang Nano 9K)
+IO_LOC "btn1" 3;
+IO_LOC "btn2" 88;
+IO_PORT "btn1" IO_TYPE=LVCMOS18 PULL_MODE=UP;
+IO_PORT "btn2" IO_TYPE=LVCMOS18 PULL_MODE=UP;
+
+//SPI LCD pins - Tang Nano 9K LCD addon typical pinout
+//IMPORTANT: Verify these match YOUR LCD module before building!
+//Using Bank 2 pins (3.3V) - Bank 1 and 3 are locked to 1.8V
+IO_LOC "spi_clk" 25;    //Bank 2
+IO_LOC "spi_mosi" 26;   //Bank 2
+IO_LOC "spi_dc" 27;     //Bank 2
+IO_LOC "spi_cs" 28;     //Bank 2
+IO_LOC "lcd_rst" 29;    //Bank 2
+IO_LOC "lcd_bl" 30;     //Bank 2
+IO_PORT "spi_clk" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "spi_mosi" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "spi_dc" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "spi_cs" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "lcd_rst" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "lcd_bl" IO_TYPE=LVCMOS33 DRIVE=8;
+
+//Debug LED
+IO_LOC "led" 10;
+IO_PORT "led" IO_TYPE=LVCMOS18 DRIVE=8;
