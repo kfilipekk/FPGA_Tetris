@@ -6,11 +6,13 @@ module top(
     wire hdmi_clk, hdmi_clk_5x, lock;
     wire [12:0] x, y;
     wire [2:0] hve;
-    wire [15:0] rom_addr;
+    wire [17:0] rom_addr;
     wire [23:0] rom_data;
     reg [23:0] rgb;
     reg [2:0] hve_d1, hve_d2;
     reg in_region_d1;
+    reg [3:0] frame_num;
+    reg [25:0] frame_counter;
 
     rPLL #(.FCLKIN("27"), .IDIV_SEL(2), .FBDIV_SEL(13), .ODIV_SEL(4)) pll_inst (
         .CLKIN(clk), .CLKOUT(hdmi_clk_5x), .LOCK(lock),
@@ -29,11 +31,16 @@ module top(
     //hSync: 688-799, VSync: 481-483. Active: <640, <480.
     assign hve = { (h_cnt < 640 && v_cnt < 480), (v_cnt >= 481 && v_cnt < 484), (h_cnt >= 688 && h_cnt < 800) };
     
+    always @(posedge hdmi_clk) begin
+        frame_counter <= frame_counter + 1;
+        if (frame_counter == 0) frame_num <= frame_num + 1;
+    end
+    
     //image Logic (200x150 centered on 640x480)
     wire in_region = (h_cnt >= 220 && h_cnt < 420 && v_cnt >= 165 && v_cnt < 315);
-    assign rom_addr = in_region ? ((v_cnt - 165) * 200 + (h_cnt - 220)) : 16'd0;
+    assign rom_addr = in_region ? (frame_num * 30000 + (v_cnt - 165) * 200 + (h_cnt - 220)) : 18'd0;
     
-    image_rom img_rom (.clk(hdmi_clk), .addr(rom_addr), .data(rom_data));
+    image_rom img_rom (.clk(hdmi_clk), .addr(rom_addr), .frame(frame_num), .data(rom_data));
 
     always @(posedge hdmi_clk) begin
         hve_d1 <= hve; hve_d2 <= hve_d1;
