@@ -1,6 +1,6 @@
 #one run per module, `make crc32` for just one
 
-UNITS = uart_tx btn_toggle
+UNITS = uart_tx btn_toggle crc32 spi_rx
 
 all: $(UNITS)
 
