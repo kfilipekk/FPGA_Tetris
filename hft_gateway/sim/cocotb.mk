@@ -1,8 +1,8 @@
 SIM ?= icarus
 TOPLEVEL_LANG ?= verilog
 
-#uart_util is in mk/
-export PYTHONPATH := $(abspath ../mk):$(PYTHONPATH)
+#uart_util is in mk/, the model in host/
+export PYTHONPATH := $(abspath ../mk):$(abspath ../host):$(PYTHONPATH)
 
 VERILOG_SOURCES = $(abspath $(wildcard ../rtl/*.v))
 
