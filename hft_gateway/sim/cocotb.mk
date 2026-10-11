@@ -24,4 +24,13 @@ ifeq ($(SIM_BUILD),sim_build/hft_core_bucket)
 COMPILE_ARGS += -Phft_core.BURST=3 -Phft_core.REFILL=1073741824
 endif
 
+#fast spi, short gaps
+ifeq ($(COCOTB_TOPLEVEL),feed_gen)
+COMPILE_ARGS += -Pfeed_gen.HALF=2 -Pfeed_gen.GAP=300 -Pfeed_gen.SCEN_GAP=100
+endif
+ifeq ($(COCOTB_TOPLEVEL),top)
+COMPILE_ARGS += -Ptop.ORD_DIV=8 -Ptop.HALF=2 -Ptop.GAP=200000 -Ptop.SCEN_GAP=5000 \
+                -Ptop.BTN_HOLD=4 -Ptop.REFILL=1073741824
+endif
+
 include $(shell cocotb-config --makefiles)/Makefile.sim

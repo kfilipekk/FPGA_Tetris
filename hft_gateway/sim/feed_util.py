@@ -1,7 +1,7 @@
 #drivers and monitors for the feed side: spi pins and the byte stream behind them
 import random
 
-from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly
+from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly, RisingEdge
 
 
 async def spi_send(clk, sck, mosi, cs_n, data, half=4):
@@ -18,6 +18,25 @@ async def spi_send(clk, sck, mosi, cs_n, data, half=4):
     await ClockCycles(clk, half)
     cs_n.value = 1
     await ClockCycles(clk, half)
+
+
+async def spi_capture(clk, sck, mosi, cs_n, frames):
+    """frames off the pins, appended as bytes when cs rises"""
+    cur, bits, n, last_sck, last_cs = bytearray(), 0, 0, 0, 1
+    while True:
+        await RisingEdge(clk)
+        await ReadOnly()
+        s, c = int(sck.value), int(cs_n.value)
+        if c == 0 and s == 1 and last_sck == 0:
+            bits = (bits << 1) | int(mosi.value)
+            n += 1
+            if n == 8:
+                cur.append(bits & 0xFF)
+                n = 0
+        if c == 1 and last_cs == 0:
+            frames.append(bytes(cur))
+            cur, n = bytearray(), 0
+        last_sck, last_cs = s, c
 
 
 async def stream_send(dut, data, gaps=(0, 0)):

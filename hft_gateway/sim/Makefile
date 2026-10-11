@@ -1,6 +1,7 @@
 #one run per module, `make crc32` for just one
 
-UNITS = uart_tx btn_toggle crc32 spi_rx itch_parser risk_gate ouch_tx hft_core
+UNITS = uart_tx btn_toggle crc32 spi_rx itch_parser risk_gate ouch_tx hft_core \
+        feed_gen top
 
 all: $(UNITS) hft_core_bucket
 

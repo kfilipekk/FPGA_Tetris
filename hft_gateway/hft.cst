@@ -1,0 +1,18 @@
+//logic analyser header, eight neighbouring pins on bank 2 (3.3 v)
+//ch0-2 decode as spi, ch3 as uart at the order port baud
+IO_LOC  "feed_sck" 25;
+IO_PORT "feed_sck" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_LOC  "feed_mosi" 26;
+IO_PORT "feed_mosi" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_LOC  "feed_cs_n" 27;
+IO_PORT "feed_cs_n" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_LOC  "ord_tx" 28;
+IO_PORT "ord_tx" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_LOC  "spec" 29;
+IO_PORT "spec" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_LOC  "risk_ok" 30;
+IO_PORT "risk_ok" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_LOC  "tx_commit" 33;
+IO_PORT "tx_commit" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_LOC  "tx_abort" 34;
+IO_PORT "tx_abort" IO_TYPE=LVCMOS33 DRIVE=8;
