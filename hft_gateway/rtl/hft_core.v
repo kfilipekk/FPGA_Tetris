@@ -120,6 +120,30 @@ module hft_core #(
         .stomped (stomped)
     );
 
+`ifdef FORMAL
+    reg f_past    = 0;
+    reg f_granted = 0;               //the gate passed the order on the wire
+    always @(posedge clk) begin
+        f_past <= 1'b1;
+        if (launch)            f_granted <= 1'b0;
+        else if (grant && busy) f_granted <= 1'b1;
+    end
+
+    always @* begin
+        if (live && px_ok) assert (px <= LIMIT);
+        //a good fcs needs the gate
+        if (good) assert (f_granted);
+    end
+
+    always @(posedge clk)
+        if (f_past) begin
+            //and the gate only sees clean, in-limit orders for the live frame
+            if (grant) assert ($past(live && ok && px_ok) && $past(px) <= LIMIT);
+        end
+
+    always @(posedge clk)
+        cover (sent);
+`endif
 
     assign spec   = busy && !good && !bad;
     assign tx_commit = good;

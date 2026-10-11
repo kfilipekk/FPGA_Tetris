@@ -43,5 +43,43 @@ module risk_gate #(
         tokens <= (t_next > {1'b0, FULL}) ? FULL : t_next[TW-1:0];
     end
 
+`ifdef FORMAL
+    //grants over the last REFILL clocks, keep REFILL small here
+    reg [REFILL-1:0] f_hist = 0;
+    reg              f_past = 0;
+    always @(posedge clk) begin
+        f_past <= 1'b1;
+        f_hist <= {f_hist[REFILL-2:0], pass};
+    end
+
+    integer   f_k;
+    reg [7:0] f_cnt;
+    always @* begin
+        f_cnt = 0;
+        for (f_k = 0; f_k < REFILL; f_k = f_k + 1)
+            f_cnt = f_cnt + {7'd0, f_hist[f_k]};
+    end
+
+    always @* begin
+        assert (tokens <= BURST);
+        assert (tick < REFILL);
+        //never more than the bucket and one refill in any window
+        assert (f_cnt <= BURST + 1);
+    end
+
+    always @(posedge clk)
+        if (f_past) begin
+            //only a clean check, with a token and no kill, gets through
+            assert (grant == $past(check && !kill && tokens != 0 && limits));
+            assert (deny == ($past(check) && !grant));
+            if (grant) assert ($past(price) >= PX_LO && $past(price) <= PX_HI);
+            if (grant) assert ($past(qty) <= MAX_QTY && $past(notional) <= MAX_NOTIONAL);
+        end
+
+    always @(posedge clk) begin
+        cover (f_cnt == BURST + 1);
+        cover (f_past && $past(check && armed) && deny);
+    end
+`endif
 
 endmodule

@@ -1,0 +1,20 @@
+[tasks]
+prove
+cover
+
+[options]
+prove: mode prove
+prove: depth 16
+cover: mode cover
+cover: depth 64
+
+[engines]
+smtbmc yices
+
+[script]
+read -formal crc32.v ouch_tx.v
+prep -top ouch_tx
+
+[files]
+../rtl/crc32.v
+../rtl/ouch_tx.v

@@ -124,5 +124,74 @@ module ouch_tx #(
         end
     end
 
+`ifdef FORMAL
+    //the rules in the header again, from the inputs alone
+    reg [5:0] f_n      = 0;          //bytes out this frame
+    reg       f_px     = 0;
+    reg       f_poison = 0;          //price missed its field
+    reg       f_dec    = 0;
+    reg       f_commit = 0;
+    reg       f_late   = 0;          //fcs started with no commit
+    reg       f_past   = 0;
+    wire      f_good   = f_dec && f_commit && !f_poison;
+
+    always @(posedge clk) begin
+        f_past <= 1'b1;
+        if (!busy) begin
+            if (start) begin
+                f_n      <= 0;
+                f_px     <= 1'b0;
+                f_poison <= 1'b0;
+                f_dec    <= 1'b0;
+                f_commit <= 1'b0;
+                f_late   <= 1'b0;
+            end
+        end else begin
+            if (px_valid) f_px <= 1'b1;
+            if (decide && !f_dec && !f_poison && f_n <= 6'd49 && !(fire && f_n == 6'd49)) begin
+                f_dec    <= 1'b1;
+                f_commit <= commit;
+            end
+            if (fire) begin
+                f_n <= f_n + 1'b1;
+                if (f_n == 6'd28 && !f_px) f_poison <= 1'b1;
+                if (f_n == 6'd49 && !f_good) f_late <= 1'b1;
+            end
+        end
+    end
+
+    always @* begin
+        assert (valid == busy);
+        if (busy) begin
+            assert (idx == f_n && idx <= 6'd52);
+            assert (!f_poison || f_n >= 6'd29);
+            assert (!f_late || f_n >= 6'd50);
+            assert (have_px == f_px);
+            assert (fcs_on == (f_n >= 6'd50));
+            assert (good == f_good);
+            assert (bad == ((f_dec && !f_commit) || f_poison || f_late));
+            //the fcs is the frame's crc only for a priced commit that beat it
+            if (idx >= 6'd49)
+                assert (fcs == (f_good ? ~crc : crc));
+        end else
+            assert (!good && !bad);
+    end
+
+    always @(posedge clk)
+        if (f_past) begin
+            //53 bytes, never cut short
+            if ($past(busy && !(fire && idx == 6'd52))) assert (busy);
+            if ($past(busy && fire && idx == 6'd52))    assert (!busy);
+            assert (sent    == $past(busy && fire && idx == 6'd52 && good));
+            assert (stomped == $past(busy && fire && idx == 6'd52 && !good));
+        end
+
+    always @(posedge clk) begin
+        cover (sent);
+        cover (stomped && $past(f_poison));
+        cover (stomped && $past(f_late));
+        cover (stomped && $past(f_dec && !f_commit));
+    end
+`endif
 
 endmodule

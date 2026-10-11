@@ -97,5 +97,66 @@ module itch_parser #(
         end
     end
 
+`ifdef FORMAL
+    //what spi_rx gives: sof only with a byte, eof never with one
+    always @* begin
+        assume (!sof || valid);
+        assume (!(valid && eof));
+    end
+
+    //own count, own header check, own crc and the fcs as received
+    reg  [5:0]  f_i    = 0;
+    reg         f_head = 0;
+    reg  [31:0] f_rx   = 0;
+    reg         f_past = 0;
+    wire [5:0]  f_j    = sof ? 6'd0 : f_i;
+    wire [31:0] f_crc;
+    crc32 f_u_crc (
+        .clk (clk),
+        .init(sof),
+        .en  (valid && f_j < 6'd36),
+        .d   (data),
+        .c   (f_crc)
+    );
+    wire [63:0] f_sym = SYMBOL >> (8 * (31 - f_j));
+
+    always @(posedge clk) begin
+        f_past <= 1'b1;
+        if (valid) begin
+            f_i <= (f_j == 6'd63) ? f_j : f_j + 1'b1;
+            if (f_j == 0)                       f_head <= data == 8'h41;
+            if (f_j == 19 && data != 8'h53)     f_head <= 1'b0;
+            if (f_j >= 24 && f_j <= 31 && data != f_sym[7:0]) f_head <= 1'b0;
+            if (f_j >= 36 && f_j <= 39)         f_rx <= {data, f_rx[31:8]};
+        end
+    end
+
+    always @* begin
+        assert (idx == f_i);
+        assert (crc == f_crc);
+        assert (hit == f_head);
+        if (open) assert (f_i >= 6'd32 && f_i <= 6'd39 && hit && f_head);
+        //the running fcs compare, against the bytes in so far
+        if (open && f_i == 6'd37) assert (fcs_good == (f_rx[31:24] == ~crc[7:0]));
+        if (open && f_i == 6'd38) assert (fcs_good == (f_rx[31:16] == ~crc[15:0]));
+        if (open && f_i == 6'd39) assert (fcs_good == (f_rx[31:8]  == ~crc[23:0]));
+        if (trig) assert (f_i == 6'd32 && f_head);
+        if (px_valid) assert (f_i == 6'd36 && open);
+        //a pass means the whole frame came in and its fcs is the crc of the rest
+        if (done && ok) assert (f_i == 6'd40 && f_head && f_rx == ~f_crc);
+    end
+
+    always @(posedge clk)
+        if (f_past) begin
+            //one verdict per trigger
+            if (done) assert ($past(open));
+            if ($past(open) && !done) assert (open);
+        end
+
+    always @(posedge clk) begin
+        cover (done && ok);
+        cover (done && !ok && f_i == 6'd40);
+    end
+`endif
 
 endmodule
