@@ -16,4 +16,12 @@ ifeq ($(COCOTB_TOPLEVEL),risk_gate)
 COMPILE_ARGS += -Prisk_gate.BURST=3 -Prisk_gate.REFILL=40
 endif
 
+#a bucket that never runs dry, then one of three that never refills
+ifeq ($(SIM_BUILD),sim_build/hft_core)
+COMPILE_ARGS += -Phft_core.BURST=1000 -Phft_core.REFILL=1073741824
+endif
+ifeq ($(SIM_BUILD),sim_build/hft_core_bucket)
+COMPILE_ARGS += -Phft_core.BURST=3 -Phft_core.REFILL=1073741824
+endif
+
 include $(shell cocotb-config --makefiles)/Makefile.sim
