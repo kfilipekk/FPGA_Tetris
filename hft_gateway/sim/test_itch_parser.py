@@ -78,6 +78,7 @@ async def against_model(dut):
     dut.data.value = 0
     dut.sof.value = 0
     dut.eof.value = 0
+    dut.symbol.value = int.from_bytes(m.SYMBOL, "big")
     await ClockCycles(dut.clk, 3)
     ev = []
     cocotb.start_soon(watch(dut, ev))
@@ -99,6 +100,7 @@ async def back_to_back(dut):
     dut.data.value = 0
     dut.sof.value = 0
     dut.eof.value = 0
+    dut.symbol.value = int.from_bytes(m.SYMBOL, "big")
     await ClockCycles(dut.clk, 3)
     ev = []
     cocotb.start_soon(watch(dut, ev))

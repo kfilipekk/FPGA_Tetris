@@ -17,6 +17,8 @@ async def ready_gen(dut, p):
 async def setup(dut, p_ready=1.0):
     for s in (dut.in_valid, dut.in_data, dut.in_sof, dut.in_eof, dut.kill, dut.out_ready):
         s.value = 0
+    dut.symbol.value = int.from_bytes(m.SYMBOL, "big")
+    dut.limit.value = m.LIMIT
     cocotb.start_soon(Clock(dut.clk, 37, "ns").start(start_high=False))
     p = [p_ready]
     cocotb.start_soon(ready_gen(dut, p))
@@ -155,3 +157,33 @@ async def latency(dut):
                   tick_to_order, verdict)
     assert tick_to_order == 2
     assert verdict == 3
+
+
+@cocotb.test()
+async def settings_held_from_launch(dut):
+    """a new symbol and limit take effect on the next order, not the one going"""
+    frames, _ = await setup(dut)
+    msft = m.symbol_of("MSFT")
+    a = m.itch_add(10, b"S", 100, msft, 1550000)
+    await stream_send(dut, a)
+    await drain(dut)
+    assert frames == []                         #not our symbol yet
+    await FallingEdge(dut.clk)
+    dut.symbol.value = int.from_bytes(msft, "big")
+    await stream_send(dut, a)
+    await drain(dut)                            #over $150
+    await FallingEdge(dut.clk)
+    dut.limit.value = 1600000
+    await stream_send(dut, a)
+    await drain(dut)                            #under $160
+    #the limit drops once the order is going: it keeps the one it launched with
+    b = m.itch_add(11, b"S", 100, msft, 1550000)
+    cocotb.start_soon(stream_send(dut, b))
+    while not int(dut.out_valid.value):
+        await RisingEdge(dut.clk)
+    await FallingEdge(dut.clk)
+    dut.limit.value = 1000000
+    await drain(dut)
+    await ClockCycles(dut.clk, 20)
+    assert [m.check_frame(f) for f in frames] == ["stomped", "good", "good"]
+    assert frames[1] == m.frame_of(m.verdict(a, symbol=msft, limit=1600000)[0], True)

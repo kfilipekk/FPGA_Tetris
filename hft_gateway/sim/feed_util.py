@@ -39,6 +39,14 @@ async def spi_capture(clk, sck, mosi, cs_n, frames):
         last_sck, last_cs = s, c
 
 
+async def uart_send(clk, rx, data, div):
+    """8n1 bytes on a line, lsb first"""
+    for b in data:
+        for bit in [0] + [(b >> i) & 1 for i in range(8)] + [1]:
+            rx.value = bit
+            await ClockCycles(clk, div)
+
+
 async def stream_send(dut, data, gaps=(0, 0)):
     """bytes on in_valid/in_data with sof on the first and eof after, from a falling edge"""
     for i, b in enumerate(data):

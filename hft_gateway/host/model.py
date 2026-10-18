@@ -101,10 +101,10 @@ def parse_itch(msg):
                 fcs_ok=len(msg) >= 40 and msg[36:40] == fcs(msg[:36]))
 
 
-def triggers(msg):
+def triggers(msg, symbol=SYMBOL):
     """an order goes out on this frame: add order, sell side, our stock"""
     p = parse_itch(msg)
-    return p is not None and len(msg) >= 32 and p["side"] == b"S" and p["stock"] == SYMBOL
+    return p is not None and len(msg) >= 32 and p["side"] == b"S" and p["stock"] == symbol
 
 
 def risk_limits(price, qty):
@@ -112,18 +112,18 @@ def risk_limits(price, qty):
             and price * qty <= MAX_NOTIONAL)
 
 
-def verdict(msg, tokens=1, kill=False):
+def verdict(msg, tokens=1, kill=False, symbol=SYMBOL, limit=LIMIT):
     """None if no order, else (payload, why) with why '' when it commits"""
-    if not triggers(msg):
+    if not triggers(msg, symbol):
         return None
     p = parse_itch(msg)
     qty = min(p["shares"], ORDER_QTY)
     full = len(msg) >= 40
     price = p["price"] if len(msg) >= 36 else 0
-    payload = ouch_enter(token_of(p["ref"]), qty, SYMBOL, price)
+    payload = ouch_enter(token_of(p["ref"]), qty, symbol, price)
     if not full or not p["fcs_ok"]:
         return payload, "fcs"
-    if price > LIMIT:
+    if price > limit:
         return payload, "price"
     if kill:
         return payload, "kill"
@@ -153,3 +153,18 @@ def check_frame(frame):
 def parse_ouch(payload):
     t, token, side, qty, stock, price = struct.unpack(">c14scI8sI", payload[:32])
     return dict(token=token, side=side, qty=qty, stock=stock, price=price)
+
+
+def block(msg):
+    """a moldudp64 style message block: 2 byte big endian length, then the message"""
+    return struct.pack(">H", len(msg)) + msg
+
+
+def config(symbol=SYMBOL, limit=LIMIT, kill=False):
+    """the settings frame the engine takes in band on its feed"""
+    body = b"C" + symbol.ljust(8)[:8] + struct.pack(">IB", limit, int(kill))
+    return body + fcs(body)
+
+
+def symbol_of(name):
+    return name.encode().ljust(8)[:8]

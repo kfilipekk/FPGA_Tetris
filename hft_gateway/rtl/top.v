@@ -1,21 +1,26 @@
 //tang nano 9k: the on-chip feed goes out on the spi pins and back in through the same
-//receiver an outside feed would use. orders leave on the usb uart and on ord_tx, and
-//the engine's state is on the header for a logic analyser
+//receiver an outside feed would use. the pc can feed it instead over the usb uart,
+//length-prefixed blocks as in moldudp64, and set the symbol, limit and kill switch.
+//orders leave on the usb uart and on ord_tx, the engine's state is on the header
 //s1 plays the scripted burst, s2 toggles the kill switch
 `default_nettype none
 
 module top #(
-    parameter ORD_DIV  = 234,      //115200 baud order port
-    parameter HALF     = 16,
-    parameter GAP      = 2700000,
-    parameter SCEN_GAP = 135000,
-    parameter BTN_HOLD = 270000,
-    parameter BURST    = 4,
-    parameter REFILL   = 6750000
+    parameter        UART_DIV  = 234,       //115200 baud, both ways
+    parameter        HALF      = 16,
+    parameter        GAP       = 2700000,
+    parameter        SCEN_GAP  = 135000,
+    parameter        BTN_HOLD  = 270000,
+    parameter        BURST     = 4,
+    parameter        REFILL    = 6750000,
+    parameter        HOST_HOLD = 27000000,  //host mode lasts 1 s past its last byte
+    parameter [63:0] SYMBOL    = "AAPL    ",
+    parameter [31:0] LIMIT     = 1500000
 ) (
     input  wire       clk,
     input  wire       btn_s1,
     input  wire       btn_s2,
+    input  wire       uart_rx,
     output wire [5:0] led,
     output wire       uart_tx,
     output wire       feed_sck,
@@ -28,41 +33,92 @@ module top #(
     output wire       tx_abort
 );
 
-    wire scen_t, kill;
+    wire scen_t, btn_kill;
     btn_toggle #(.HOLD(BTN_HOLD)) u_s1 (.clk(clk), .btn(btn_s1), .state(scen_t));
-    btn_toggle #(.HOLD(BTN_HOLD)) u_s2 (.clk(clk), .btn(btn_s2), .state(kill));
+    btn_toggle #(.HOLD(BTN_HOLD)) u_s2 (.clk(clk), .btn(btn_s2), .state(btn_kill));
 
     reg scen_d = 0;
     always @(posedge clk)
         scen_d <= scen_t;
     wire go = scen_t != scen_d;
 
+    //the pc's feed
+    wire [7:0] rx_data;
+    wire       rx_valid;
+    uart_rx #(.DIV(UART_DIV)) u_urx (.clk(clk), .rx(uart_rx), .data(rx_data), .valid(rx_valid));
+
+    wire [7:0] h_data;
+    wire       h_valid, h_sof, h_eof;
+    mold_rx u_mold (
+        .clk     (clk),
+        .in_valid(rx_valid),
+        .in_data (rx_data),
+        .data    (h_data),
+        .valid   (h_valid),
+        .sof     (h_sof),
+        .eof     (h_eof)
+    );
+
+    reg [$clog2(HOST_HOLD)-1:0] hold = 0;
+    wire host = hold != 0;
+    always @(posedge clk)
+        if (rx_valid)  hold <= HOST_HOLD - 1;
+        else if (host) hold <= hold - 1'b1;
+
+    //the on-chip feed, out on the pins and back in
     feed_gen #(.HALF(HALF), .GAP(GAP), .SCEN_GAP(SCEN_GAP)) u_feed (
         .clk (clk),
+        .en  (!host),
         .go  (go),
         .sck (feed_sck),
         .mosi(feed_mosi),
         .cs_n(feed_cs_n)
     );
 
-    wire [7:0] in_data;
-    wire       in_valid, in_sof, in_eof;
-    spi_rx u_rx (
+    wire [7:0] s_data;
+    wire       s_valid, s_sof, s_eof;
+    spi_rx u_srx (
         .clk  (clk),
         .sck  (feed_sck),
         .mosi (feed_mosi),
         .cs_n (feed_cs_n),
-        .data (in_data),
-        .valid(in_valid),
-        .sof  (in_sof),
-        .eof  (in_eof)
+        .data (s_data),
+        .valid(s_valid),
+        .sof  (s_sof),
+        .eof  (s_eof)
     );
+
+    //a frame cut off by the switch is closed by the next sof and fails its checks
+    wire [7:0] in_data  = host ? h_data  : s_data;
+    wire       in_valid = host ? h_valid : s_valid;
+    wire       in_sof   = host ? h_sof   : s_sof;
+    wire       in_eof   = host ? h_eof   : s_eof;
+
+    wire [63:0] symbol;
+    wire [31:0] limit;
+    wire        host_kill;
+    cfg #(.SYMBOL(SYMBOL), .LIMIT(LIMIT)) u_cfg (
+        .clk   (clk),
+        .valid (in_valid),
+        .data  (in_data),
+        .sof   (in_sof),
+        .eof   (in_eof),
+        .symbol(symbol),
+        .limit (limit),
+        .kill  (host_kill),
+        /* verilator lint_off PINCONNECTEMPTY */
+        .loaded()
+        /* verilator lint_on PINCONNECTEMPTY */
+    );
+    wire kill = btn_kill || host_kill;
 
     wire [7:0] out_data;
     wire       out_valid, out_ready, sent, stomped;
     hft_core #(.BURST(BURST), .REFILL(REFILL)) u_core (
         .clk      (clk),
         .kill     (kill),
+        .symbol   (symbol),
+        .limit    (limit),
         .in_valid (in_valid),
         .in_data  (in_data),
         .in_sof   (in_sof),
@@ -81,7 +137,7 @@ module top #(
         /* verilator lint_on PINCONNECTEMPTY */
     );
 
-    uart_tx #(.DIV(ORD_DIV)) u_tx (
+    uart_tx #(.DIV(UART_DIV)) u_tx (
         .clk  (clk),
         .data (out_data),
         .valid(out_valid),
@@ -90,15 +146,15 @@ module top #(
     );
     assign ord_tx = uart_tx;
 
-    //sent and stomped flip their leds, the rest follow the header
-    reg       n_sent = 0, n_stomp = 0;
-    reg [24:0] beat  = 0;
+    //sent and stomped flip their leds, the last one is on in host mode
+    reg        n_sent = 0, n_stomp = 0;
+    reg [24:0] beat   = 0;
     always @(posedge clk) begin
         beat <= beat + 1'b1;
         if (sent)    n_sent  <= ~n_sent;
         if (stomped) n_stomp <= ~n_stomp;
     end
 
-    assign led = ~{beat[24], risk_ok, n_stomp, n_sent, spec, kill};
+    assign led = ~{host | beat[24], risk_ok, n_stomp, n_sent, spec, kill};
 
 endmodule

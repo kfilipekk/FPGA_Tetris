@@ -15,6 +15,7 @@ def split(frame):
 @cocotb.test()
 async def stream_then_burst(dut):
     dut.go.value = 0
+    dut.en.value = 1
     cocotb.start_soon(Clock(dut.clk, 37, "ns").start(start_high=False))
     frames = []
     cocotb.start_soon(spi_capture(dut.clk, dut.sck, dut.mosi, dut.cs_n, frames))
@@ -25,6 +26,7 @@ async def stream_then_burst(dut):
     dut.go.value = 1
     await FallingEdge(dut.clk)
     dut.go.value = 0
+    dut.en.value = 1
     while len(frames) < 45:
         await ClockCycles(dut.clk, 100)
 
@@ -45,6 +47,7 @@ async def stream_then_burst(dut):
 @cocotb.test()
 async def go_during_burst_ignored(dut):
     dut.go.value = 0
+    dut.en.value = 1
     cocotb.start_soon(Clock(dut.clk, 37, "ns").start(start_high=False))
     frames = []
     cocotb.start_soon(spi_capture(dut.clk, dut.sck, dut.mosi, dut.cs_n, frames))
@@ -59,3 +62,32 @@ async def go_during_burst_ignored(dut):
         await ClockCycles(dut.clk, 100)
     kinds = [split(f)[0] for f in frames]
     assert kinds[:12] == list(range(1, 11)) + [0, 0]
+
+
+@cocotb.test()
+async def quiet_when_disabled(dut):
+    """off between frames, and a go while off is dropped"""
+    dut.go.value = 0
+    dut.en.value = 1
+    cocotb.start_soon(Clock(dut.clk, 37, "ns").start(start_high=False))
+    frames = []
+    cocotb.start_soon(spi_capture(dut.clk, dut.sck, dut.mosi, dut.cs_n, frames))
+    while len(frames) < 2:
+        await ClockCycles(dut.clk, 100)
+    await FallingEdge(dut.clk)
+    dut.en.value = 0
+    dut.go.value = 1
+    await FallingEdge(dut.clk)
+    dut.go.value = 0
+    n = len(frames)
+    await ClockCycles(dut.clk, 6000)
+    #at most the frame that was already going
+    assert len(frames) - n <= 1
+    n = len(frames)
+    await ClockCycles(dut.clk, 6000)
+    assert len(frames) == n
+    await FallingEdge(dut.clk)
+    dut.en.value = 1
+    while len(frames) < n + 2:
+        await ClockCycles(dut.clk, 100)
+    assert all(split(f)[0] == 0 for f in frames)

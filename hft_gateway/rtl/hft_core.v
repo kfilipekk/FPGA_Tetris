@@ -4,8 +4,6 @@
 `default_nettype none
 
 module hft_core #(
-    parameter [63:0] SYMBOL       = "AAPL    ",
-    parameter [31:0] LIMIT        = 1500000,       //buy at or under $150.0000
     parameter [31:0] ORDER_QTY    = 100,
     parameter        BURST        = 4,
     parameter        REFILL       = 6750000,
@@ -14,22 +12,24 @@ module hft_core #(
     parameter [15:0] MAX_QTY      = 500,
     parameter [47:0] MAX_NOTIONAL = 48'd500000000
 ) (
-    input  wire       clk,
-    input  wire       kill,
-    input  wire       in_valid,
-    input  wire [7:0] in_data,
-    input  wire       in_sof,
-    input  wire       in_eof,
-    output wire [7:0] out_data,
-    output wire       out_valid,
-    input  wire       out_ready,
-    output wire       spec,      //order on the wire, verdict pending
-    output wire       armed,     //risk gate has a token and no kill
-    output wire       tx_commit,
-    output wire       tx_abort,
-    output wire       sent,
-    output wire       stomped,
-    output wire       missed     //a match while the last order was still going
+    input  wire        clk,
+    input  wire        kill,
+    input  wire [63:0] symbol,    //settings, held for each order from its launch
+    input  wire [31:0] limit,     //buy at or under, 4 decimals
+    input  wire        in_valid,
+    input  wire [7:0]  in_data,
+    input  wire        in_sof,
+    input  wire        in_eof,
+    output wire [7:0]  out_data,
+    output wire        out_valid,
+    input  wire        out_ready,
+    output wire        spec,      //order on the wire, verdict pending
+    output wire        armed,     //risk gate has a token and no kill
+    output wire        tx_commit,
+    output wire        tx_abort,
+    output wire        sent,
+    output wire        stomped,
+    output wire        missed     //a match while the last order was still going
 );
 
     wire        trig, px_valid, done, ok;
@@ -38,8 +38,9 @@ module hft_core #(
     /* verilator lint_on UNUSEDSIGNAL */
     wire [31:0] shares, price;
 
-    itch_parser #(.SYMBOL(SYMBOL)) u_parse (
+    itch_parser u_parse (
         .clk     (clk),
+        .symbol  (symbol),
         .valid   (in_valid),
         .data    (in_data),
         .sof     (in_sof),
@@ -61,17 +62,19 @@ module hft_core #(
     reg        live   = 0;
     reg        px_ok  = 0;
     reg [31:0] px     = 0;
+    reg [31:0] lim    = 0;
     reg [15:0] qty    = 0;
     wire [15:0] size  = (shares < ORDER_QTY) ? shares[15:0] : ORDER_QTY[15:0];
     always @(posedge clk) begin
         if (launch) begin
             live  <= 1'b1;
             px_ok <= 1'b0;
+            lim   <= limit;
             qty   <= size;
         end else if (done)
             live <= 1'b0;
         if (px_valid && live) begin
-            px_ok <= price <= LIMIT;
+            px_ok <= price <= lim;
             px    <= price;
         end
     end
@@ -103,7 +106,7 @@ module hft_core #(
     ouch_tx u_tx (
         .clk     (clk),
         .start   (launch),
-        .stock   (SYMBOL),
+        .stock   (symbol),
         .token   (ref_num[55:0]),
         .qty     ({16'd0, size}),
         .px_valid(px_valid && live),
@@ -130,7 +133,7 @@ module hft_core #(
     end
 
     always @* begin
-        if (live && px_ok) assert (px <= LIMIT);
+        if (live && px_ok) assert (px <= lim);
         //a good fcs needs the gate
         if (good) assert (f_granted);
     end
@@ -138,7 +141,7 @@ module hft_core #(
     always @(posedge clk)
         if (f_past) begin
             //and the gate only sees clean, in-limit orders for the live frame
-            if (grant) assert ($past(live && ok && px_ok) && $past(px) <= LIMIT);
+            if (grant) assert ($past(live && ok && px_ok) && $past(px) <= $past(lim));
         end
 
     always @(posedge clk)

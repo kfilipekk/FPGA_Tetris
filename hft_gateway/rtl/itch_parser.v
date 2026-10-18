@@ -4,10 +4,9 @@
 //trig fires on the last stock byte, before the price and fcs are in
 `default_nettype none
 
-module itch_parser #(
-    parameter [63:0] SYMBOL = "AAPL    "
-) (
+module itch_parser (
     input  wire        clk,
+    input  wire [63:0] symbol,
     input  wire        valid,
     input  wire [7:0]  data,
     input  wire        sof,
@@ -39,14 +38,14 @@ module itch_parser #(
     reg [7:0] sym_b, fcs_b;
     always @* begin
         case (i[2:0])                 //24..31
-            3'd0:    sym_b = SYMBOL[63:56];
-            3'd1:    sym_b = SYMBOL[55:48];
-            3'd2:    sym_b = SYMBOL[47:40];
-            3'd3:    sym_b = SYMBOL[39:32];
-            3'd4:    sym_b = SYMBOL[31:24];
-            3'd5:    sym_b = SYMBOL[23:16];
-            3'd6:    sym_b = SYMBOL[15:8];
-            default: sym_b = SYMBOL[7:0];
+            3'd0:    sym_b = symbol[63:56];
+            3'd1:    sym_b = symbol[55:48];
+            3'd2:    sym_b = symbol[47:40];
+            3'd3:    sym_b = symbol[39:32];
+            3'd4:    sym_b = symbol[31:24];
+            3'd5:    sym_b = symbol[23:16];
+            3'd6:    sym_b = symbol[15:8];
+            default: sym_b = symbol[7:0];
         endcase
         case (i[1:0])                 //36..39, fcs low byte first
             2'd0:    fcs_b = ~crc[7:0];
@@ -118,7 +117,7 @@ module itch_parser #(
         .d   (data),
         .c   (f_crc)
     );
-    wire [63:0] f_sym = SYMBOL >> (8 * (31 - f_j));
+    wire [63:0] f_sym = symbol >> (8 * (31 - f_j));
 
     always @(posedge clk) begin
         f_past <= 1'b1;

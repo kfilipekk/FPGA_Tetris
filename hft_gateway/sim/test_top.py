@@ -4,7 +4,7 @@ from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly, RisingEdge
 
 import model as m
-from feed_util import spi_capture
+from feed_util import spi_capture, uart_send
 from uart_util import recv_byte
 
 DIV = 8      #set in cocotb.mk
@@ -42,6 +42,7 @@ def expected(feed, tokens, kill=False):
 async def burst_then_kill(dut):
     dut.btn_s1.value = 1
     dut.btn_s2.value = 1
+    dut.uart_rx.value = 1
     cocotb.start_soon(Clock(dut.clk, 37, "ns").start(start_high=False))
     feed, orders = [], []
     cocotb.start_soon(spi_capture(dut.clk, dut.feed_sck, dut.feed_mosi, dut.feed_cs_n, feed))
@@ -102,6 +103,7 @@ async def pin_latency(dut):
     """from the sck edge that samples the symbol's last bit to the order's start bit"""
     dut.btn_s1.value = 1
     dut.btn_s2.value = 1
+    dut.uart_rx.value = 1
     cocotb.start_soon(Clock(dut.clk, 37, "ns").start(start_high=False))
     await ClockCycles(dut.clk, 2)
     await press(dut, dut.btn_s2)    #kill off again, it carried over
@@ -126,3 +128,68 @@ async def pin_latency(dut):
     dut._log.info("sck edge to start bit: %d clocks, %.0f ns at 27 MHz", lat, lat * 1e9 / 27e6)
     #3 to sync and find the edge, then the byte, the trigger, the launch, the uart
     assert lat == 6
+
+
+@cocotb.test()
+async def host_feed(dut):
+    """the pc sets the symbol and limit, then feeds blocks over the uart. the on-chip
+    feed stays quiet while it does"""
+    dut.btn_s1.value = 1
+    dut.btn_s2.value = 1
+    dut.uart_rx.value = 1
+    cocotb.start_soon(Clock(dut.clk, 37, "ns").start(start_high=False))
+    feed, orders = [], []
+    #past any burst an earlier test started and the orders it made
+    quiet = 0
+    while quiet < 12000:
+        await RisingEdge(dut.clk)
+        quiet = quiet + 1 if int(dut.feed_cs_n.value) else 0
+    cocotb.start_soon(spi_capture(dut.clk, dut.feed_sck, dut.feed_mosi, dut.feed_cs_n, feed))
+    cocotb.start_soon(uart_frames(dut, orders))
+    n_feed, n_orders = 0, 0
+    #the bucket never refills here and earlier tests may have emptied it
+    tokens = tokens0 = int(dut.u_core.u_risk.tokens.value)
+    btn_kill = bool(int(dut.u_s2.state.value))
+
+    msft = m.symbol_of("MSFT")
+    sent = [m.config(msft, 1600000, kill=False)]
+    msgs = [
+        m.itch_add(1, b"S", 100, msft, 1550000),               #good
+        m.itch_add(2, b"S", 100, msft, 1650000),               #over the new limit
+        m.itch_add(3, b"S", 100, m.SYMBOL, 1490000),           #old symbol, ignored
+        m.itch_add(4, b"S", 100, msft, 1550000, bad=True),     #corrupt
+        m.config(b"CORRUPT!", 1, kill=True)[:-1] + b"\x00",    #bad fcs, ignored
+        m.itch_add(5, b"S", 100, msft, 1500000),               #good
+        m.config(msft, 1600000, kill=True),
+        m.itch_add(6, b"S", 100, msft, 1500000),               #killed
+    ]
+    for x in sent + msgs:
+        await uart_send(dut.clk, dut.uart_rx, m.block(x), DIV)
+        await ClockCycles(dut.clk, 6000)       #an order's length
+    want = []
+    kill = False
+    for x in msgs:
+        if x[0:1] == b"C":
+            if x == m.config(msft, 1600000, kill=True):
+                kill = True
+            continue
+        v = m.verdict(x, symbol=msft, limit=1600000, tokens=tokens, kill=kill or btn_kill)
+        if v is not None:
+            tokens -= v[1] == ""
+            want.append(m.frame_of(v[0], v[1] == ""))
+    assert orders[n_orders:] == want
+    if tokens0 >= 2 and not btn_kill:
+        assert [m.check_frame(f) for f in want] == ["good", "stomped", "stomped", "good", "stomped"]
+    assert len(feed) == n_feed
+    assert int(dut.u_cfg.symbol.value) == int.from_bytes(msft, "big")
+
+    #a byte lost mid-block costs that block only
+    blk = m.block(m.itch_add(7, b"S", 100, msft, 1500000))
+    await uart_send(dut.clk, dut.uart_rx, blk[:40] + blk[41:], DIV)   #one fcs byte short
+    await ClockCycles(dut.clk, 40000)
+    await uart_send(dut.clk, dut.uart_rx, m.block(m.config(msft, 1600000)), DIV)
+    await uart_send(dut.clk, dut.uart_rx, m.block(m.itch_add(8, b"S", 100, msft, 1500000)), DIV)
+    await ClockCycles(dut.clk, 6000)
+    tail = orders[n_orders + len(want):]
+    assert [m.check_frame(f) for f in tail] == \
+        ["stomped", "good" if tokens > 0 and not btn_kill else "stomped"]

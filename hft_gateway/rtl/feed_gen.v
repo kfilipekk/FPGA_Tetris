@@ -12,6 +12,7 @@ module feed_gen #(
     parameter [31:0] CENTER   = 1500000   //streamed prices sit around $150
 ) (
     input  wire clk,
+    input  wire en,                   //low while the host is feeding
     input  wire go,
     output reg  sck  = 0,
     output reg  mosi = 0,
@@ -127,7 +128,7 @@ module feed_gen #(
 
     always @(posedge clk) begin
         hc <= half ? 0 : hc + 1'b1;
-        if (go && scen == 0) pend <= 1'b1;
+        if (go && scen == 0 && en) pend <= 1'b1;
 
         if (load) begin
             bi   <= nb;
@@ -140,7 +141,10 @@ module feed_gen #(
             IDLE: begin
                 hc <= 0;
                 if (gap != 0) gap <= gap - 1'b1;
-                if (pend && scen == 0) begin
+                if (!en) begin
+                    pend <= 1'b0;
+                    scen <= 0;
+                end else if (pend && scen == 0) begin
                     scen <= NSCEN;
                     pend <= 1'b0;
                     gap  <= 0;
