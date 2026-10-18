@@ -3,7 +3,7 @@
 UNITS = uart_tx uart_rx btn_toggle crc32 spi_rx mold_rx cfg itch_parser risk_gate \
         ouch_tx hft_core feed_gen top
 
-all: $(UNITS) hft_core_bucket
+all: $(UNITS) hft_core_bucket top_la
 
 $(UNITS):
 	$(MAKE) -f cocotb.mk COCOTB_TOPLEVEL=$@ COCOTB_TEST_MODULES=test_$@ \
@@ -14,7 +14,12 @@ hft_core_bucket:
 	$(MAKE) -f cocotb.mk COCOTB_TOPLEVEL=hft_core COCOTB_TEST_MODULES=test_$@ \
 		SIM_BUILD=sim_build/$@ COCOTB_RESULTS_FILE=sim_build/$@/results.xml
 
+#the board at its real rates, through the capture checks
+top_la:
+	$(MAKE) -f cocotb.mk COCOTB_TOPLEVEL=top COCOTB_TEST_MODULES=test_$@ \
+		SIM_BUILD=sim_build/$@ COCOTB_RESULTS_FILE=sim_build/$@/results.xml
+
 clean:
 	rm -rf sim_build __pycache__
 
-.PHONY: all clean $(UNITS) hft_core_bucket
+.PHONY: all clean $(UNITS) hft_core_bucket top_la
