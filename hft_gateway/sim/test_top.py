@@ -1,4 +1,3 @@
-#the whole board: the on-chip feed, through the spi pins, out of the uart
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly, RisingEdge
@@ -59,7 +58,6 @@ async def burst_then_kill(dut):
                     seen.add(name)
     cocotb.start_soon(pins())
 
-    #the first streamed message and its order, then the scripted burst
     while len(feed) < 1:
         await ClockCycles(dut.clk, 100)
     await ClockCycles(dut.clk, 6000)
@@ -72,8 +70,6 @@ async def burst_then_kill(dut):
     assert kinds == [0] + list(range(1, 11))
     want, tokens = expected(feed, BURST)
     assert orders == [w for w, _ in want]
-    #every path, then commits until the bucket runs dry (the streamed one may have
-    #taken a token)
     whys = [w for _, w in want][-9:]
     assert whys[:4] == ["", "price", "fcs", "limits"]
     n = whys[4:].count("")
@@ -82,7 +78,6 @@ async def burst_then_kill(dut):
     await ReadOnly()
     assert int(dut.risk_ok.value) == int(tokens > 0)
 
-    #kill on: every order goes out stomped
     await FallingEdge(dut.clk)
     await press(dut, dut.btn_s2)
     await ReadOnly()
@@ -100,16 +95,14 @@ async def burst_then_kill(dut):
 
 @cocotb.test()
 async def pin_latency(dut):
-    """from the sck edge that samples the symbol's last bit to the order's start bit"""
     dut.btn_s1.value = 1
     dut.btn_s2.value = 1
     dut.uart_rx.value = 1
     cocotb.start_soon(Clock(dut.clk, 37, "ns").start(start_high=False))
     await ClockCycles(dut.clk, 2)
-    await press(dut, dut.btn_s2)    #kill off again, it carried over
+    await press(dut, dut.btn_s2)    #kill off
     await FallingEdge(dut.clk)
     await press(dut, dut.btn_s1)
-    #count from a cs fall, in case a frame was already going
     edges, start, synced = [], None, False
     cyc, last_sck, last_cs, last_tx = 0, 0, 0, 1
     while start is None:
@@ -126,20 +119,16 @@ async def pin_latency(dut):
         last_sck, last_cs, last_tx = s, c, tx
     lat = start - edges[32 * 8 - 1]
     dut._log.info("sck edge to start bit: %d clocks, %.0f ns at 27 MHz", lat, lat * 1e9 / 27e6)
-    #3 to sync and find the edge, then the byte, the trigger, the launch, the uart
     assert lat == 6
 
 
 @cocotb.test()
 async def host_feed(dut):
-    """the pc sets the symbol and limit, then feeds blocks over the uart. the on-chip
-    feed stays quiet while it does"""
     dut.btn_s1.value = 1
     dut.btn_s2.value = 1
     dut.uart_rx.value = 1
     cocotb.start_soon(Clock(dut.clk, 37, "ns").start(start_high=False))
     feed, orders = [], []
-    #past any burst an earlier test started and the orders it made
     quiet = 0
     while quiet < 12000:
         await RisingEdge(dut.clk)
@@ -147,7 +136,6 @@ async def host_feed(dut):
     cocotb.start_soon(spi_capture(dut.clk, dut.feed_sck, dut.feed_mosi, dut.feed_cs_n, feed))
     cocotb.start_soon(uart_frames(dut, orders))
     n_feed, n_orders = 0, 0
-    #the bucket never refills here and earlier tests may have emptied it
     tokens = tokens0 = int(dut.u_core.u_risk.tokens.value)
     btn_kill = bool(int(dut.u_s2.state.value))
 
@@ -165,7 +153,7 @@ async def host_feed(dut):
     ]
     for x in sent + msgs:
         await uart_send(dut.clk, dut.uart_rx, m.block(x), DIV)
-        await ClockCycles(dut.clk, 6000)       #an order's length
+        await ClockCycles(dut.clk, 6000)
     want = []
     kill = False
     for x in msgs:
@@ -183,7 +171,6 @@ async def host_feed(dut):
     assert len(feed) == n_feed
     assert int(dut.u_cfg.symbol.value) == int.from_bytes(msft, "big")
 
-    #a byte lost mid-block costs that block only
     blk = m.block(m.itch_add(7, b"S", 100, msft, 1500000))
     await uart_send(dut.clk, dut.uart_rx, blk[:40] + blk[41:], DIV)   #one fcs byte short
     await ClockCycles(dut.clk, 40000)

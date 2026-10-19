@@ -23,7 +23,6 @@ async def line(dut, bits, div):
 
 @cocotb.test()
 async def bytes_with_baud_error(dut):
-    """3% either way still lands mid-bit"""
     dut.rx.value = 1
     cocotb.start_soon(Clock(dut.clk, 37, "ns").start(start_high=False))
     got = []

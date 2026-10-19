@@ -87,7 +87,6 @@ async def kill_stomps(dut):
 
 @cocotb.test()
 async def price_too_late(dut):
-    """a clean order on a feed slower than the order port: the price misses its field"""
     frames, _ = await setup(dut)
     msg = m.itch_add(2, b"S", 100, m.SYMBOL, 1499000)
     await stream_send(dut, msg, (12, 12))
@@ -99,7 +98,6 @@ async def price_too_late(dut):
 
 @cocotb.test()
 async def busy_misses(dut):
-    """a second match while the first order is still going gets no order"""
     frames, p = await setup(dut, 0.05)
     missed = []
 
@@ -123,8 +121,6 @@ async def busy_misses(dut):
 
 @cocotb.test()
 async def latency(dut):
-    """clocks from the symbol's last byte to the first order byte, and from the last
-    fcs byte to the commit"""
     frames, _ = await setup(dut)
     msg = m.itch_add(5, b"S", 100, m.SYMBOL, 1499000)
     t = {}
@@ -149,8 +145,7 @@ async def latency(dut):
     await stream_send(dut, msg)
     await drain(dut)
     assert m.check_frame(frames[0]) == "good"
-    #inputs change on the falling edge, so they are seen one sample after the clock
-    #they are presented in. outputs are seen in the clock they are presented in
+    #inputs change on the falling edge
     tick_to_order = t["out"] - t["sym"] + 1
     verdict = t["commit"] - t["fcs"] + 1
     dut._log.info("first order byte %d clocks after the symbol, commit %d after the fcs",
@@ -161,7 +156,6 @@ async def latency(dut):
 
 @cocotb.test()
 async def settings_held_from_launch(dut):
-    """a new symbol and limit take effect on the next order, not the one going"""
     frames, _ = await setup(dut)
     msft = m.symbol_of("MSFT")
     a = m.itch_add(10, b"S", 100, msft, 1550000)

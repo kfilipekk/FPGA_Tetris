@@ -1,7 +1,5 @@
-#reads a pulseview capture of the eight header pins (.sr), decodes the spi feed and the
-#uart orders, and checks them: every order against the model, the commit and abort
-#lines against its fcs, and the time from the trigger's sck edge to its start bit
-#  python3 capture.py burst.sr [--baud 115200] [--plot burst.png]
+#checks a pulseview capture of the header against the model
+#  python3 capture.py burst.sr [--plot burst.png]
 import argparse
 import configparser
 import re
@@ -14,7 +12,6 @@ CH = dict(sck=0, mosi=1, cs_n=2, ord_tx=3, spec=4, risk_ok=5, commit=6, abort=7)
 
 
 def read_sr(path):
-    """samplerate and one int per sample (bit n is channel n) from a sigrok session"""
     z = zipfile.ZipFile(path)
     meta = configparser.ConfigParser()
     meta.read_string(z.read("metadata").decode())
@@ -33,7 +30,6 @@ def read_sr(path):
 
 
 def write_sr(path, rate, samples, names=None):
-    """the same format back, for captures made from simulation"""
     names = names or list(CH)
     meta = "[global]\nsigrok version=0.5.2\n\n[device 1]\ncapturefile=logic-1\n" \
            "total probes=%d\nsamplerate=%d Hz\ntotal analog=0\n" % (len(names), int(rate))
@@ -50,7 +46,6 @@ def bit(s, ch):
 
 
 def spi_frames(samples):
-    """(bytes, sample of every sck rising edge) per cs frame"""
     out, cur, edges, acc, n = [], bytearray(), [], 0, 0
     prev = samples[0]
     for i in range(1, len(samples)):
@@ -72,7 +67,6 @@ def spi_frames(samples):
 
 
 def uart_bytes(samples, rate, baud):
-    """(byte, sample of its start bit's falling edge) off the order line"""
     spb = rate / baud
     ch = CH["ord_tx"]
     out, i, n = [], 1, len(samples)
@@ -91,7 +85,6 @@ def uart_bytes(samples, rate, baud):
 
 
 def orders(ub):
-    """frames off the order bytes: (frame, status, first start bit, last stop bit)"""
     out, i = [], 0
     while i + m.FRAME_LEN <= len(ub):
         f = bytes(b for b, _ in ub[i:i + m.FRAME_LEN])
@@ -111,12 +104,10 @@ def analyse(path, baud=115200, symbol=m.SYMBOL, limit=m.LIMIT):
     rows, problems = [], []
     fi = 0
     for f, st, t0, t1 in ords:
-        #the feed frame whose 32nd byte ended last before this order started
         while fi + 1 < len(feed) and len(feed[fi + 1][1]) >= 256 and feed[fi + 1][1][255] < t0:
             fi += 1
         msg, edges = feed[fi] if feed else (b"", [])
         lat = (t0 - edges[255]) / rate if len(edges) >= 256 and edges[255] < t0 else None
-        #the line that was high as the fcs went out
         mid = t1 - int(rate / baud)
         line = "commit" if bit(s[mid], CH["commit"]) else "abort" if bit(s[mid], CH["abort"]) else "-"
         r = dict(seq=None, status=st, line=line, latency=lat, why="")
@@ -143,7 +134,6 @@ def analyse(path, baud=115200, symbol=m.SYMBOL, limit=m.LIMIT):
 
 
 def plot(path, out, baud=115200, t_from=None, t_to=None):
-    """the eight lines, the decoded bytes under the two buses, as an image"""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -154,7 +144,7 @@ def plot(path, out, baud=115200, t_from=None, t_to=None):
     names = ["feed_sck", "feed_mosi", "feed_cs_n", "ord_tx", "spec", "risk_ok",
              "tx_commit", "tx_abort"]
     surface, ink, muted = "#fcfcfb", "#0b0b0b", "#52514e"
-    blue, good, bad = "#2a78d6", "#0ca30c", "#d03b3b"   #series 1, status good and critical
+    blue, good, bad = "#2a78d6", "#0ca30c", "#d03b3b"
     colour = [muted, ink, ink, ink, blue, muted, good, bad]
 
     step = max(1, (b - a) // 20000)

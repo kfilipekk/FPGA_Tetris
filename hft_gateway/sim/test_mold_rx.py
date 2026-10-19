@@ -49,7 +49,6 @@ async def blocks(dut):
         msg = bytes(random.getrandbits(8) for _ in range(random.randint(1, 60)))
         sent.append(msg)
         await send(dut, len(msg).to_bytes(2, "big") + msg)
-    #an empty block is skipped
     await send(dut, b"\x00\x00")
     await send(dut, b"\x00\x01\x7f")
     await ClockCycles(dut.clk, 10)

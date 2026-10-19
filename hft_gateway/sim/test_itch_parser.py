@@ -65,7 +65,6 @@ def frames(n):
         elif r < 0.25:
             msg = b"E" + msg[1:]                         #not an add order
         out.append(msg)
-    #always a few of ours
     for k in (1, 2, 3, 4, 6):
         out.append(m.gen_message(k, k))
     return out
@@ -94,7 +93,6 @@ async def against_model(dut):
 
 @cocotb.test()
 async def back_to_back(dut):
-    """no idle clocks between bytes, and a new frame cutting off one in flight"""
     cocotb.start_soon(Clock(dut.clk, 37, "ns").start(start_high=False))
     dut.valid.value = 0
     dut.data.value = 0
@@ -109,7 +107,6 @@ async def back_to_back(dut):
     await send(dut, good, (0, 0))
     assert ev == [("trig", 7, 300), ("px", 1499000), ("done", 1)]
 
-    #sof with no eof between: the cut one fails
     ev.clear()
     for i, b in enumerate(good[:34] + good):
         await FallingEdge(dut.clk)

@@ -1,4 +1,3 @@
-#the model against the spec layouts, run with plain python
 import zlib
 
 import model as m
@@ -21,7 +20,6 @@ def test_fcs():
     assert m.check_frame(good) == "good"
     assert m.check_frame(bad) == "stomped"
     assert m.check_frame(good[:-1] + bytes([good[-1] ^ 1])) is None
-    #crc over a frame and its good fcs leaves the ethernet residue
     assert zlib.crc32(good) == 0x2144DF1C
 
 
@@ -50,7 +48,6 @@ def test_burst_script():
 
 
 def test_stream_mix():
-    #the stream hits every path
     seen = set()
     for s in range(2000):
         r = m.verdict(m.gen_message(s, 0))

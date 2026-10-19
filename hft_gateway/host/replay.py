@@ -1,7 +1,6 @@
 #feeds the board from the pc and checks every order against the model
 #  python3 replay.py /dev/ttyUSB1 --synthetic 2000
-#  python3 replay.py /dev/ttyUSB1 --itch 01302019.NASDAQ_ITCH50.gz --symbol AAPL --limit 166
-#the itch file is nasdaq's own: 2 byte length, then the message, all day long
+#  python3 replay.py /dev/ttyUSB1 --itch aapl.itch --symbol AAPL --limit 162.80
 import argparse
 import gzip
 import random
@@ -14,7 +13,6 @@ import model as m
 
 
 def read_itch(path, symbol=None, count=None):
-    """add orders from a nasdaq itch 5.0 file, each with an fcs on the end"""
     op = gzip.open if path.endswith(".gz") else open
     n = 0
     with op(path, "rb") as f:
@@ -32,7 +30,6 @@ def read_itch(path, symbol=None, count=None):
 
 
 def synthetic(count, seed):
-    """the on-chip feed's mix, plus cut short and corrupted frames"""
     rnd = random.Random(seed)
     for s in range(count):
         msg = m.gen_message(s, 0, ts=rnd.getrandbits(48))
@@ -50,13 +47,11 @@ class Board:
         import serial
         self.s = serial.Serial(port, baud, timeout=0.01)
         self.byte_time = 10 / baud
-        self.free_at = 0.0   #when the line to the board drains
+        self.free_at = 0.0
         self.buf = bytearray()
-        self.extra = []      #frames nobody was waiting for
+        self.extra = []
 
     def send(self, data):
-        """paced to the line, so nothing queues up in the usb bridge and an order can
-        be waited for from when its message really went out"""
         blk = m.block(data)
         ahead = self.free_at - time.monotonic()
         if ahead > 0.002:
@@ -65,7 +60,6 @@ class Board:
         self.free_at = max(time.monotonic(), self.free_at) + len(blk) * self.byte_time
 
     def frames(self, wait):
-        """frames off the line within wait seconds of the last byte seen"""
         out, end = [], time.monotonic() + wait
         while time.monotonic() < end:
             got = self.s.read(4096)
@@ -77,7 +71,6 @@ class Board:
         return out
 
     def order(self, wait=0.3):
-        """the next frame, or None"""
         end = max(time.monotonic(), self.free_at) + wait
         while time.monotonic() < end:
             self.buf += self.s.read(4096)
@@ -89,7 +82,6 @@ class Board:
 
 
 def check(msg, got, symbol, limit, kill=False):
-    """outcome for one message: (name, problem or None)"""
     v = m.verdict(msg, symbol=symbol, limit=limit, kill=kill)
     if v is None:
         return ("none", None) if got is None else ("none", "an order nobody asked for")
@@ -102,7 +94,7 @@ def check(msg, got, symbol, limit, kill=False):
     if status == "good" and why:
         return why, "committed what the model rejects"
     if status == "stomped" and not why:
-        return "risk", None   #the bucket, which the host only sees from outside
+        return "risk", None
     return why or "commit", None
 
 
@@ -125,14 +117,12 @@ def run(board, msgs, symbol, limit, rate=None, log=print):
             board.extra = []
         if rate:
             time.sleep(max(0.0, 1 / rate - (time.monotonic() - t0)))
-    #anything left on the line is an order nobody asked for
     late = board.frames(0.2)
     problems += len(late)
     return counts, problems, n
 
 
 def self_test(board, symbol, limit):
-    """settings in, a good order, the kill switch, a bad price. returns problems"""
     good = m.itch_add(0xF00D, b"S", 100, symbol, limit - 100)
     over = m.itch_add(0xF00E, b"S", 100, symbol, limit + 100)
     steps = [(False, good, "good"), (False, over, "stomped"),
@@ -140,7 +130,7 @@ def self_test(board, symbol, limit):
     bad = 0
     for kill, msg, want in steps:
         board.send(m.config(symbol, limit, kill))
-        time.sleep(0.3)   #a token back between probes
+        time.sleep(0.3)
         board.send(msg)
         got = board.order()
         status = got[1] if got else None
@@ -168,7 +158,7 @@ def main():
     symbol = m.symbol_of(args.symbol)
     limit = int(round(args.limit * 1e4))
     board = Board(args.port, args.baud)
-    board.frames(0.3)   #drop whatever the on-chip feed left on the line
+    board.frames(0.3)
 
     print("self test")
     problems = self_test(board, symbol, limit)

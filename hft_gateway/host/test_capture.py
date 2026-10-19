@@ -1,4 +1,3 @@
-#the capture checks on a capture built sample by sample, run with plain python
 import os
 import tempfile
 
@@ -12,7 +11,7 @@ BAUD = 115200
 class Line:
     def __init__(self):
         self.s = bytearray()
-        self.v = 0b0000_1100   #cs high, uart idle
+        self.v = 0b0000_1100
 
     def set(self, ch, b):
         self.v = (self.v & ~(1 << ch)) | (b << ch)
@@ -22,7 +21,6 @@ class Line:
 
 
 def build(msg, order, good, gap_samples=6):
-    """a feed frame, the order starting gap_samples after its 256th sck edge"""
     L = Line()
     L.hold(50)
     L.set(c.CH["cs_n"], 0)
@@ -35,7 +33,7 @@ def build(msg, order, good, gap_samples=6):
             L.set(c.CH["sck"], 1)
             if k * 8 + 7 - i == 255:
                 edge256 = len(L.s)
-                L.hold(gap_samples)          #the order starts mid-bit
+                L.hold(gap_samples)
                 L.set(c.CH["spec"], 1)
                 start = len(L.s)
                 break
@@ -43,7 +41,6 @@ def build(msg, order, good, gap_samples=6):
             L.set(c.CH["sck"], 0)
         if edge256 is not None:
             break
-    #the rest of the feed and the whole order, interleaved sample by sample
     feed_bits = []
     for b in msg[32:]:
         feed_bits += [(b >> i) & 1 for i in range(7, -1, -1)]
@@ -111,7 +108,6 @@ def test_catches_wrong_line_and_bad_commit():
 
 
 def test_bench_burst():
-    """the s1 burst off the board, as captured"""
     here = os.path.dirname(os.path.abspath(__file__))
     r = c.analyse(os.path.join(here, "..", "docs", "captures", "burst.sr"))
     assert r["problems"] == []

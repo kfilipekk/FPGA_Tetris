@@ -1,7 +1,6 @@
-//itch 5.0 add order, 36 bytes and a 4 byte fcs per cs frame
+//itch 5.0 add order and a 4 byte fcs
 //  0 type  1 locate  3 tracking  5 timestamp  11 order ref  19 side
 //  20 shares  24 stock  32 price  36 fcs
-//trig fires on the last stock byte, before the price and fcs are in
 `default_nettype none
 
 module itch_parser (
@@ -11,19 +10,19 @@ module itch_parser (
     input  wire [7:0]  data,
     input  wire        sof,
     input  wire        eof,
-    output reg         trig     = 0,  //add order, sell side, our stock
+    output reg         trig     = 0,
     output reg  [63:0] ref_num  = 0,
     output reg  [31:0] shares   = 0,
     output reg         px_valid = 0,
     output reg  [31:0] price    = 0,
-    output reg         done     = 0,  //once per trig
-    output reg         ok       = 0   //with done: fcs good, frame complete
+    output reg         done     = 0,
+    output reg         ok       = 0
 );
 
-    reg  [5:0] idx = 0;               //index of the next byte
+    reg  [5:0] idx = 0;
     wire [5:0] i   = sof ? 6'd0 : idx;
-    reg        hit  = 0;              //every checked byte so far matched
-    reg        open = 0;              //triggered, no verdict yet
+    reg        hit  = 0;
+    reg        open = 0;
     reg        fcs_good = 0;
 
     wire [31:0] crc;
@@ -37,7 +36,7 @@ module itch_parser (
 
     reg [7:0] sym_b, fcs_b;
     always @* begin
-        case (i[2:0])                 //24..31
+        case (i[2:0])
             3'd0:    sym_b = symbol[63:56];
             3'd1:    sym_b = symbol[55:48];
             3'd2:    sym_b = symbol[47:40];
@@ -47,7 +46,7 @@ module itch_parser (
             3'd6:    sym_b = symbol[15:8];
             default: sym_b = symbol[7:0];
         endcase
-        case (i[1:0])                 //36..39, fcs low byte first
+        case (i[1:0])
             2'd0:    fcs_b = ~crc[7:0];
             2'd1:    fcs_b = ~crc[15:8];
             2'd2:    fcs_b = ~crc[23:16];
@@ -84,7 +83,6 @@ module itch_parser (
             else if (in_fcs) fcs_good <= fcs_good && data == fcs_b;
         end
 
-        //verdict on the last fcs byte, or a cut short frame
         if (valid && i == 6'd39 && open) begin
             done <= 1'b1;
             ok   <= fcs_good && data == fcs_b;
@@ -97,13 +95,11 @@ module itch_parser (
     end
 
 `ifdef FORMAL
-    //what spi_rx gives: sof only with a byte, eof never with one
     always @* begin
         assume (!sof || valid);
         assume (!(valid && eof));
     end
 
-    //own count, own header check, own crc and the fcs as received
     reg  [5:0]  f_i    = 0;
     reg         f_head = 0;
     reg  [31:0] f_rx   = 0;
@@ -135,19 +131,16 @@ module itch_parser (
         assert (crc == f_crc);
         assert (hit == f_head);
         if (open) assert (f_i >= 6'd32 && f_i <= 6'd39 && hit && f_head);
-        //the running fcs compare, against the bytes in so far
         if (open && f_i == 6'd37) assert (fcs_good == (f_rx[31:24] == ~crc[7:0]));
         if (open && f_i == 6'd38) assert (fcs_good == (f_rx[31:16] == ~crc[15:0]));
         if (open && f_i == 6'd39) assert (fcs_good == (f_rx[31:8]  == ~crc[23:0]));
         if (trig) assert (f_i == 6'd32 && f_head);
         if (px_valid) assert (f_i == 6'd36 && open);
-        //a pass means the whole frame came in and its fcs is the crc of the rest
         if (done && ok) assert (f_i == 6'd40 && f_head && f_rx == ~f_crc);
     end
 
     always @(posedge clk)
         if (f_past) begin
-            //one verdict per trigger
             if (done) assert ($past(open));
             if ($past(open) && !done) assert (open);
         end

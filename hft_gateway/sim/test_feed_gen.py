@@ -36,7 +36,6 @@ async def stream_then_burst(dut):
         assert seq == i
         assert f == m.gen_message(seq, kind, ts), i
         kinds.append(kind)
-    #the burst cuts in at the next gap and the stream picks up after it
     k = kinds.index(1)
     assert 30 <= k <= 31
     assert kinds[:k] == [0] * k
@@ -66,7 +65,6 @@ async def go_during_burst_ignored(dut):
 
 @cocotb.test()
 async def quiet_when_disabled(dut):
-    """off between frames, and a go while off is dropped"""
     dut.go.value = 0
     dut.en.value = 1
     cocotb.start_soon(Clock(dut.clk, 37, "ns").start(start_high=False))
@@ -81,7 +79,6 @@ async def quiet_when_disabled(dut):
     dut.go.value = 0
     n = len(frames)
     await ClockCycles(dut.clk, 6000)
-    #at most the frame that was already going
     assert len(frames) - n <= 1
     n = len(frames)
     await ClockCycles(dut.clk, 6000)

@@ -1,7 +1,4 @@
-//ouch 4.2 enter order, 49 bytes and a 4 byte fcs, sent from the moment the symbol
-//matches. the price is filled in when it lands and the verdict is only needed by
-//the fcs: a reject, a late verdict or a missing price sends the fcs inverted, so
-//the frame is dropped at the other end
+//ouch 4.2 enter order. fcs goes out inverted unless a commit beat it
 //  0 type  1 token  15 side  16 shares  20 stock  28 price  32 tif  36 firm
 //  40 display  41 capacity  42 iso  43 min qty  47 cross  48 customer  49 fcs
 `default_nettype none
@@ -12,7 +9,7 @@ module ouch_tx #(
     input  wire        clk,
     input  wire        start,
     input  wire [63:0] stock,
-    input  wire [55:0] token,     //14 hex digits
+    input  wire [55:0] token,
     input  wire [31:0] qty,
     input  wire        px_valid,
     input  wire [31:0] price,
@@ -22,10 +19,10 @@ module ouch_tx #(
     output wire        valid,
     input  wire        ready,
     output reg         busy    = 0,
-    output reg         good    = 0,  //accepted, the fcs will be good
-    output reg         bad     = 0,  //rejected, the fcs will be stomped
-    output reg         sent    = 0,  //a clock at the end of a good frame
-    output reg         stomped = 0   //and of a stomped one
+    output reg         good    = 0,
+    output reg         bad     = 0,
+    output reg         sent    = 0,
+    output reg         stomped = 0
 );
 
     reg [5:0]  idx = 0;
@@ -34,7 +31,7 @@ module ouch_tx #(
     reg [31:0] q   = 0;
     reg [31:0] px  = 0;
     reg        have_px = 0;
-    reg        fcs_on  = 0;          //verdict frozen
+    reg        fcs_on  = 0;
 
     assign valid = busy;
     wire fire = busy && ready;
@@ -60,18 +57,17 @@ module ouch_tx #(
         else if (idx <= 6'd19) data = q[8*(19 - idx) +: 8];
         else if (idx <= 6'd27) data = st[8*(27 - idx) +: 8];
         else if (idx <= 6'd31) data = pxv[8*(31 - idx) +: 8];
-        else if (idx <= 6'd35) data = 8'd0;        //time in force 0, ioc
+        else if (idx <= 6'd35) data = 8'd0;        //ioc
         else if (idx <= 6'd39) data = FIRM[8*(39 - idx) +: 8];
-        else if (idx == 6'd40) data = "Y";         //display
-        else if (idx == 6'd41) data = "P";         //capacity, principal
-        else if (idx == 6'd42) data = "N";         //not iso
-        else if (idx <= 6'd46) data = 8'd0;        //min qty
-        else if (idx == 6'd47) data = "N";         //cross type
-        else if (idx == 6'd48) data = "R";         //customer type
+        else if (idx == 6'd40) data = "Y";
+        else if (idx == 6'd41) data = "P";
+        else if (idx == 6'd42) data = "N";
+        else if (idx <= 6'd46) data = 8'd0;
+        else if (idx == 6'd47) data = "N";
+        else if (idx == 6'd48) data = "R";
         else                   data = fcs[8*(idx - 49) +: 8];
     end
 
-    //the verdict counts until the first fcs byte leaves
     wire take = decide && !fcs_on && !(fire && idx == 6'd49) && !good && !bad;
 
     always @(posedge clk) begin
@@ -103,12 +99,10 @@ module ouch_tx #(
 
             if (fire) begin
                 idx <= idx + 1'b1;
-                //price not in by its field
                 if (idx == 6'd28 && !have_px) begin
                     good <= 1'b0;
                     bad  <= 1'b1;
                 end
-                //no verdict by the fcs
                 if (idx == 6'd49) begin
                     fcs_on <= 1'b1;
                     if (!good) bad <= 1'b1;
@@ -125,13 +119,12 @@ module ouch_tx #(
     end
 
 `ifdef FORMAL
-    //the rules in the header again, from the inputs alone
-    reg [5:0] f_n      = 0;          //bytes out this frame
+    reg [5:0] f_n      = 0;
     reg       f_px     = 0;
-    reg       f_poison = 0;          //price missed its field
+    reg       f_poison = 0;
     reg       f_dec    = 0;
     reg       f_commit = 0;
-    reg       f_late   = 0;          //fcs started with no commit
+    reg       f_late   = 0;
     reg       f_past   = 0;
     wire      f_good   = f_dec && f_commit && !f_poison;
 
@@ -170,7 +163,6 @@ module ouch_tx #(
             assert (fcs_on == (f_n >= 6'd50));
             assert (good == f_good);
             assert (bad == ((f_dec && !f_commit) || f_poison || f_late));
-            //the fcs is the frame's crc only for a priced commit that beat it
             if (idx >= 6'd49)
                 assert (fcs == (f_good ? ~crc : crc));
         end else
@@ -179,7 +171,6 @@ module ouch_tx #(
 
     always @(posedge clk)
         if (f_past) begin
-            //53 bytes, never cut short
             if ($past(busy && !(fire && idx == 6'd52))) assert (busy);
             if ($past(busy && fire && idx == 6'd52))    assert (!busy);
             assert (sent    == $past(busy && fire && idx == 6'd52 && good));

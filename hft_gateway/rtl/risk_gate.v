@@ -1,11 +1,10 @@
-//pre-trade risk in one clock: kill switch, price collar, size, notional and a token
-//bucket of BURST orders, one token back every REFILL clocks
+//pre-trade risk in one clock: kill, collar, size, notional, token bucket
 `default_nettype none
 
 module risk_gate #(
     parameter        BURST        = 4,
-    parameter        REFILL       = 6750000,        //250 ms, 4 orders a second sustained
-    parameter [31:0] PX_LO        = 1000000,        //$100.0000, prices carry 4 decimals
+    parameter        REFILL       = 6750000,        //250 ms
+    parameter [31:0] PX_LO        = 1000000,        //$100.0000
     parameter [31:0] PX_HI        = 2000000,        //$200.0000
     parameter [15:0] MAX_QTY      = 500,
     parameter [47:0] MAX_NOTIONAL = 48'd500000000   //$50,000
@@ -17,7 +16,7 @@ module risk_gate #(
     input  wire [15:0] qty,
     output reg         grant = 0,
     output reg         deny  = 0,
-    output wire        armed,    //a clean order would pass now
+    output wire        armed,
     output reg  [$clog2(BURST+1)-1:0] tokens = BURST
 );
 
@@ -44,7 +43,6 @@ module risk_gate #(
     end
 
 `ifdef FORMAL
-    //grants over the last REFILL clocks, keep REFILL small here
     reg [REFILL-1:0] f_hist = 0;
     reg              f_past = 0;
     always @(posedge clk) begin
@@ -63,13 +61,11 @@ module risk_gate #(
     always @* begin
         assert (tokens <= BURST);
         assert (tick < REFILL);
-        //never more than the bucket and one refill in any window
         assert (f_cnt <= BURST + 1);
     end
 
     always @(posedge clk)
         if (f_past) begin
-            //only a clean check, with a token and no kill, gets through
             assert (grant == $past(check && !kill && tokens != 0 && limits));
             assert (deny == ($past(check) && !grant));
             if (grant) assert ($past(price) >= PX_LO && $past(price) <= PX_HI);

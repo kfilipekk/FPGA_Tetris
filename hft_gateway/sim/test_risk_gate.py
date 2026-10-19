@@ -21,7 +21,6 @@ async def idle(dut):
 
 
 async def sync_tick(dut):
-    """drain the bucket and wait for a token back, after which the refill counter is 0"""
     while int(dut.tokens.value):
         await FallingEdge(dut.clk)
         dut.check.value = 1
@@ -42,7 +41,7 @@ async def against_model(dut):
     await ClockCycles(dut.clk, 2)
     await sync_tick(dut)
 
-    tokens, tick = 1, 0   #the clock after a refill
+    tokens, tick = 1, 0
     random.seed(4)
     grants = 0
     for cyc in range(4000):
@@ -74,7 +73,6 @@ async def against_model(dut):
 
 @cocotb.test()
 async def rate_bounded(dut):
-    """checks every clock: never more than BURST + 1 grants in a REFILL window"""
     await idle(dut)
     cocotb.start_soon(Clock(dut.clk, 37, "ns").start(start_high=False))
     await ClockCycles(dut.clk, 2)
@@ -86,7 +84,6 @@ async def rate_bounded(dut):
         await ReadOnly()
         hist.append(int(dut.grant.value))
         assert sum(hist[-REFILL:]) <= BURST + 1
-    #and the long run rate is one per REFILL
     assert abs(sum(hist[-10 * REFILL:]) - 10) <= 1
 
 

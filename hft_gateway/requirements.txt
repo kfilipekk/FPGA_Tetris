@@ -3,5 +3,6 @@ cocotb
 numpy
 msgspec
 fastcrc
-#host exchange
+#host
 pyserial
+matplotlib

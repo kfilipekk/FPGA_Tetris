@@ -1,4 +1,4 @@
-#reference model: message layouts, the on-chip feed and the engine's verdicts
+#reference model
 import struct
 import zlib
 
@@ -58,7 +58,6 @@ STOCKS = [b"AAPL    ", b"MSFT    ", b"NVDA    "]
 
 
 def gen_fields(seq, kind):
-    """the on-chip feed's message for a sequence number and kind (0 stream, 1-10 burst)"""
     side, sym, shares, bad = b"S", 0, 100, False
     if kind == 0:
         r1 = xs(seq ^ 0x9E3779B9)
@@ -92,7 +91,6 @@ def gen_message(seq, kind, ts=0):
 
 
 def parse_itch(msg):
-    """fields of an add order frame, short ones padded, or None if not one"""
     if len(msg) < 1 or msg[0:1] != b"A":
         return None
     pad = bytes(msg[:36]) + bytes(max(0, 36 - len(msg)))
@@ -102,7 +100,6 @@ def parse_itch(msg):
 
 
 def triggers(msg, symbol=SYMBOL):
-    """an order goes out on this frame: add order, sell side, our stock"""
     p = parse_itch(msg)
     return p is not None and len(msg) >= 32 and p["side"] == b"S" and p["stock"] == symbol
 
@@ -113,7 +110,6 @@ def risk_limits(price, qty):
 
 
 def verdict(msg, tokens=1, kill=False, symbol=SYMBOL, limit=LIMIT):
-    """None if no order, else (payload, why) with why '' when it commits"""
     if not triggers(msg, symbol):
         return None
     p = parse_itch(msg)
@@ -139,7 +135,6 @@ def frame_of(payload, good):
 
 
 def check_frame(frame):
-    """'good', 'stomped' or None for a frame off the order port"""
     if len(frame) != FRAME_LEN or frame[0:1] != b"O":
         return None
     p, f = frame[:OUCH_LEN], frame[OUCH_LEN:]
@@ -156,12 +151,10 @@ def parse_ouch(payload):
 
 
 def block(msg):
-    """a moldudp64 style message block: 2 byte big endian length, then the message"""
     return struct.pack(">H", len(msg)) + msg
 
 
 def config(symbol=SYMBOL, limit=LIMIT, kill=False):
-    """the settings frame the engine takes in band on its feed"""
     body = b"C" + symbol.ljust(8)[:8] + struct.pack(">IB", limit, int(kill))
     return body + fcs(body)
 

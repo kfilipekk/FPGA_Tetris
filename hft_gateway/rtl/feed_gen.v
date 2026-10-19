@@ -1,18 +1,16 @@
-//on-chip itch feed, spi mode 0 master on the same wires an outside feed would use.
-//streams add orders made from a hash of the sequence number, and on go plays a
-//scripted burst that walks every path through the engine. the order ref carries
-//{0, kind, 0, seq} so the host can rebuild any message
+//on-chip itch feed over spi: a hashed stream, and a scripted burst on go
+//order ref is {0, kind, 0, seq}
 `default_nettype none
 
 module feed_gen #(
-    parameter        HALF     = 16,       //sck half period in clocks, 843.75 khz
-    parameter        GAP      = 2700000,  //100 ms between streamed messages
-    parameter        SCEN_GAP = 135000,   //5 ms between scripted ones, an order's length
+    parameter        HALF     = 16,       //843.75 khz sck
+    parameter        GAP      = 2700000,  //100 ms
+    parameter        SCEN_GAP = 135000,   //5 ms
     parameter        STREAM   = 1,
-    parameter [31:0] CENTER   = 1500000   //streamed prices sit around $150
+    parameter [31:0] CENTER   = 1500000
 ) (
     input  wire clk,
-    input  wire en,                   //low while the host is feeding
+    input  wire en,
     input  wire go,
     output reg  sck  = 0,
     output reg  mosi = 0,
@@ -32,12 +30,10 @@ module feed_gen #(
     always @(posedge clk)
         now <= now + 1'b1;
 
-    //message being sent
     reg [31:0] seq  = 0;
     reg [7:0]  kind = 0;
     reg [47:0] ts   = 0;
 
-    //not every hash bit is used
     /* verilator lint_off UNUSEDSIGNAL */
     wire [31:0] r1 = xs(seq ^ 32'h9E3779B9);
     wire [31:0] r2 = xs(r1);
@@ -59,18 +55,18 @@ module feed_gen #(
                 price  = (r1[17:13] == 5'd0) ? 32'd100 : CENTER - 32'd2048 + {20'd0, r2[11:0]};
                 bad    = r2[15:12] == 4'd0;
             end
-            8'd1:    price = 32'd1499000;       //good
-            8'd2:    price = 32'd1501000;       //over the limit
-            8'd3: begin                         //corrupt on the wire
+            8'd1:    price = 32'd1499000;
+            8'd2:    price = 32'd1501000;
+            8'd3: begin
                 price = 32'd1498000;
                 bad   = 1'b1;
             end
-            8'd4:    price = 32'd100;           //a bad tick, outside the collar
-            8'd5: begin                         //not our stock
+            8'd4:    price = 32'd100;
+            8'd5: begin
                 price = 32'd1499000;
                 sym   = 2'd1;
             end
-            default: price = 32'd1499500;       //good until the bucket runs dry
+            default: price = 32'd1499500;
         endcase
     end
 
@@ -84,12 +80,11 @@ module feed_gen #(
 
     wire [31:0] fcs = ~crc ^ {31'd0, bad};
 
-    //byte nb of the message
     always @* begin
         if (nb == 6'd0)       b = "A";
         else if (nb == 6'd1)  b = 8'd0;
-        else if (nb == 6'd2)  b = {6'd0, sym} + 8'd1;  //stock locate
-        else if (nb <= 6'd4)  b = 8'd0;                //tracking
+        else if (nb == 6'd2)  b = {6'd0, sym} + 8'd1;
+        else if (nb <= 6'd4)  b = 8'd0;
         else if (nb <= 6'd10) b = ts[8*(10 - nb) +: 8];
         else if (nb <= 6'd18) b = ref_num[8*(18 - nb) +: 8];
         else if (nb == 6'd19) b = side_s ? "S" : "B";
@@ -108,7 +103,7 @@ module feed_gen #(
     reg [31:0] gap  = 1000;
     reg [2:0]  bitn = 0;
     reg [7:0]  sh   = 0;
-    reg [3:0]  scen = 0;               //scripted messages left
+    reg [3:0]  scen = 0;
     reg        pend = 0;
 
     wire half = hc == HMAX[HW-1:0];

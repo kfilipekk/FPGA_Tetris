@@ -1,6 +1,4 @@
-#cuts a nasdaq itch 5.0 day down to one stock's add orders and a thin sample of the
-#rest, in the same 2 byte length format. reads gzip from stdin, so a download can
-#stop as soon as there is enough:
+#one stock's add orders from a nasdaq itch day on stdin
 #  curl -s https://emi.nasdaq.com/ITCH/Nasdaq%20ITCH/01302019.NASDAQ_ITCH50.gz \
 #      | python3 itch_cut.py AAPL 3000 > aapl.itch
 import gzip

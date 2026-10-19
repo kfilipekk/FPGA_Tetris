@@ -1,4 +1,3 @@
-#the replay's file reading and checking, on a made up itch day, run with plain python
 import gzip
 import io
 import os
@@ -11,7 +10,6 @@ import replay as r
 
 
 def day():
-    """a few message types as nasdaq writes them, adds for two stocks among them"""
     out = []
     for i in range(300):
         stock = b"AAPL    " if i % 3 == 0 else b"MSFT    "

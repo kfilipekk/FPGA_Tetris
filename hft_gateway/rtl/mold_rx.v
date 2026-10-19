@@ -1,6 +1,4 @@
-//message blocks as in moldudp64: a 2 byte big endian length, then the message. out
-//comes the same byte stream spi_rx gives. a pause of IDLE clocks mid-block drops
-//it, so a lost byte costs one message, not the framing
+//moldudp64 style blocks, a 2 byte length then the message. a gap drops a partial one
 `default_nettype none
 
 module mold_rx #(
@@ -28,7 +26,7 @@ module mold_rx #(
     always @(posedge clk) begin
         valid <= 1'b0;
         sof   <= 1'b0;
-        eof   <= last;              //the clock after the last byte is out
+        eof   <= last;
         last  <= 1'b0;
 
         if (in_valid) begin

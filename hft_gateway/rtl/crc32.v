@@ -1,9 +1,9 @@
-//crc-32 as in the ethernet fcs, one byte per clock. the fcs is ~c, low byte first
+//ethernet crc-32, a byte per clock, fcs is ~c low byte first
 `default_nettype none
 
 module crc32 (
     input  wire        clk,
-    input  wire        init,  //restart, the byte with it (if en) is the first
+    input  wire        init,
     input  wire        en,
     input  wire [7:0]  d,
     output reg  [31:0] c = 32'hFFFFFFFF

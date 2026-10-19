@@ -1,4 +1,4 @@
-#hft_core with a bucket of three that never refills, set in cocotb.mk
+#bucket of three, no refill
 import cocotb
 from cocotb.triggers import ReadOnly
 
@@ -15,7 +15,6 @@ async def bucket_runs_dry(dut):
     want, armed = [], []
     tokens = BURST
     for i in range(6):
-        #a reject on the way takes no token
         price = 1501000 if i == 1 else 1499000
         msg = m.itch_add(i, b"S", 100, m.SYMBOL, price)
         await stream_send(dut, msg)

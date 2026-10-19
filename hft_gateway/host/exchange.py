@@ -1,6 +1,5 @@
-#the far end of the order port: finds frames by their fcs, drops stomped ones and
-#checks every order against the model of the on-chip feed
-#  python3 exchange.py /dev/ttyUSB1 [--baud 115200] [--external]
+#reads the order port and checks each frame against the model
+#  python3 exchange.py /dev/ttyUSB1
 import argparse
 import sys
 import time
@@ -9,8 +8,6 @@ import model as m
 
 
 def hunt(buf):
-    """frames off the front of buf, and what is left. a byte that cannot start a
-    good or stomped frame is skipped, like a receiver hunting for a preamble"""
     out = []
     i = 0
     while len(buf) - i >= m.FRAME_LEN:
@@ -25,7 +22,6 @@ def hunt(buf):
 
 
 def judge(frame, status, external=False):
-    """what the exchange makes of a frame, and any rule it broke"""
     payload = frame[:m.OUCH_LEN]
     o = m.parse_ouch(payload)
     ref = m.ref_of(o["token"])
@@ -34,7 +30,6 @@ def judge(frame, status, external=False):
              why="", bad=[])
 
     if status == "good":
-        #these hold for any feed
         if o["stock"] != m.SYMBOL or o["side"] != b"B":
             r["bad"].append("wrong stock or side")
         if o["price"] > m.LIMIT:
@@ -45,7 +40,6 @@ def judge(frame, status, external=False):
     if external:
         return r
 
-    #on-chip feed: rebuild the message and ask the model
     v = m.verdict(m.gen_message(seq, kind))
     if v is None:
         r["bad"].append("an order for a message that should not trigger")
@@ -57,7 +51,7 @@ def judge(frame, status, external=False):
     if status == "good" and why:
         r["bad"].append("committed what the model rejects (%s)" % why)
     if status == "stomped" and not why:
-        r["why"] = "risk"   #tokens or kill, which the host cannot see
+        r["why"] = "risk"
     return r
 
 
@@ -92,7 +86,6 @@ def main():
                 errors += bool(r["bad"])
     except KeyboardInterrupt:
         pass
-    #busiest quarter second, against a bucket of 4 refilled every 250 ms
     peak = max((sum(1 for t in goods if a <= t < a + 0.25) for a in goods), default=0)
     print("\n" + ", ".join("%s %d" % kv for kv in sorted(counts.items())))
     print("most good orders in any 250 ms: %d" % peak)

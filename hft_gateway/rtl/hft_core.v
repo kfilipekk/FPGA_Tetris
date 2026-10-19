@@ -1,6 +1,4 @@
-//feed bytes in, orders out. an order is launched on the symbol match, priced when
-//the price lands and let through only if the strategy, the feed fcs and the risk
-//gate all agree. anything else, or a verdict too late, goes out stomped
+//itch in, ouch out. launches on the symbol, commits only if price, fcs and risk agree
 `default_nettype none
 
 module hft_core #(
@@ -14,8 +12,8 @@ module hft_core #(
 ) (
     input  wire        clk,
     input  wire        kill,
-    input  wire [63:0] symbol,    //settings, held for each order from its launch
-    input  wire [31:0] limit,     //buy at or under, 4 decimals
+    input  wire [63:0] symbol,
+    input  wire [31:0] limit,
     input  wire        in_valid,
     input  wire [7:0]  in_data,
     input  wire        in_sof,
@@ -23,18 +21,18 @@ module hft_core #(
     output wire [7:0]  out_data,
     output wire        out_valid,
     input  wire        out_ready,
-    output wire        spec,      //order on the wire, verdict pending
-    output wire        armed,     //risk gate has a token and no kill
+    output wire        spec,
+    output wire        armed,
     output wire        tx_commit,
     output wire        tx_abort,
     output wire        sent,
     output wire        stomped,
-    output wire        missed     //a match while the last order was still going
+    output wire        missed
 );
 
     wire        trig, px_valid, done, ok;
     /* verilator lint_off UNUSEDSIGNAL */
-    wire [63:0] ref_num;               //the token takes the low 56 bits
+    wire [63:0] ref_num;
     /* verilator lint_on UNUSEDSIGNAL */
     wire [31:0] shares, price;
 
@@ -58,7 +56,6 @@ module hft_core #(
     wire launch = trig && !busy;
     assign missed = trig && busy;
 
-    //the order on the wire belongs to the frame being parsed
     reg        live   = 0;
     reg        px_ok  = 0;
     reg [31:0] px     = 0;
@@ -99,7 +96,6 @@ module hft_core #(
         /* verilator lint_on PINCONNECTEMPTY */
     );
 
-    //a bad fcs or price is rejected on the spot, a clean one waits a clock for risk
     wire decide = (done && live && !(ok && px_ok)) || grant || deny;
 
     wire good, bad;
@@ -125,7 +121,7 @@ module hft_core #(
 
 `ifdef FORMAL
     reg f_past    = 0;
-    reg f_granted = 0;               //the gate passed the order on the wire
+    reg f_granted = 0;
     always @(posedge clk) begin
         f_past <= 1'b1;
         if (launch)            f_granted <= 1'b0;
@@ -134,13 +130,11 @@ module hft_core #(
 
     always @* begin
         if (live && px_ok) assert (px <= lim);
-        //a good fcs needs the gate
         if (good) assert (f_granted);
     end
 
     always @(posedge clk)
         if (f_past) begin
-            //and the gate only sees clean, in-limit orders for the live frame
             if (grant) assert ($past(live && ok && px_ok) && $past(px) <= $past(lim));
         end
 

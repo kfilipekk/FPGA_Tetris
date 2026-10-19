@@ -1,6 +1,4 @@
-//strategy settings from the host, in band on the feed: 'C', symbol (8), limit (4),
-//kill (1) and a 4 byte fcs. applied at the end of a clean 18 byte frame, so never
-//in the middle of a message
+//settings frame from the host: 'C', symbol, limit, kill, fcs
 `default_nettype none
 
 module cfg #(
@@ -15,7 +13,7 @@ module cfg #(
     output reg  [63:0] symbol = SYMBOL,
     output reg  [31:0] limit  = LIMIT,
     output reg         kill   = 0,
-    output reg         loaded = 0   //a clock per accepted frame
+    output reg         loaded = 0
 );
 
     reg  [5:0]  idx = 0;

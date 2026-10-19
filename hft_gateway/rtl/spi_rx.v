@@ -1,4 +1,4 @@
-//spi mode 0 slave, msb first, a strobe per byte. sck oversampled, keep it under clk/4
+//spi mode 0 slave, sck under clk/4
 `default_nettype none
 
 module spi_rx (
@@ -8,8 +8,8 @@ module spi_rx (
     input  wire       cs_n,
     output reg  [7:0] data  = 0,
     output reg        valid = 0,
-    output reg        sof   = 0,  //with the first byte after cs falls
-    output reg        eof   = 0   //cs released
+    output reg        sof   = 0,
+    output reg        eof   = 0
 );
 
     reg [2:0] s_sck  = 0;

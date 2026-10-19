@@ -20,7 +20,6 @@ async def matches_zlib(dut):
             dut.init.value = int(i == 0)
             dut.en.value = 1
             dut.d.value = b
-            #idle clocks mid-frame change nothing
             if random.random() < 0.3:
                 await FallingEdge(dut.clk)
                 dut.init.value = 0

@@ -24,7 +24,7 @@ ifeq ($(COCOTB_TOPLEVEL),risk_gate)
 COMPILE_ARGS += -Prisk_gate.BURST=3 -Prisk_gate.REFILL=40
 endif
 
-#a bucket that never runs dry, then one of three that never refills
+#no refill
 ifeq ($(SIM_BUILD),sim_build/hft_core)
 COMPILE_ARGS += -Phft_core.BURST=1000 -Phft_core.REFILL=1073741824
 endif
@@ -41,7 +41,7 @@ COMPILE_ARGS += -Ptop.UART_DIV=8 -Ptop.HALF=2 -Ptop.GAP=200000 -Ptop.SCEN_GAP=50
                 -Ptop.BTN_HOLD=4 -Ptop.REFILL=1073741824 -Ptop.HOST_HOLD=30000
 endif
 
-#board rates, a short debounce
+#board rates
 ifeq ($(SIM_BUILD),sim_build/top_la)
 COMPILE_ARGS += -Ptop.BTN_HOLD=4
 endif

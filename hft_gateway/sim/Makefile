@@ -9,12 +9,12 @@ $(UNITS):
 	$(MAKE) -f cocotb.mk COCOTB_TOPLEVEL=$@ COCOTB_TEST_MODULES=test_$@ \
 		SIM_BUILD=sim_build/$@ COCOTB_RESULTS_FILE=sim_build/$@/results.xml
 
-#the engine with a bucket of three
+#bucket of three
 hft_core_bucket:
 	$(MAKE) -f cocotb.mk COCOTB_TOPLEVEL=hft_core COCOTB_TEST_MODULES=test_$@ \
 		SIM_BUILD=sim_build/$@ COCOTB_RESULTS_FILE=sim_build/$@/results.xml
 
-#the board at its real rates, through the capture checks
+#board rates
 top_la:
 	$(MAKE) -f cocotb.mk COCOTB_TOPLEVEL=top COCOTB_TEST_MODULES=test_$@ \
 		SIM_BUILD=sim_build/$@ COCOTB_RESULTS_FILE=sim_build/$@/results.xml

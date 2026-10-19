@@ -1,19 +1,15 @@
-//tang nano 9k: the on-chip feed goes out on the spi pins and back in through the same
-//receiver an outside feed would use. the pc can feed it instead over the usb uart,
-//length-prefixed blocks as in moldudp64, and set the symbol, limit and kill switch.
-//orders leave on the usb uart and on ord_tx, the engine's state is on the header
-//s1 plays the scripted burst, s2 toggles the kill switch
+//tang nano 9k. s1 plays the burst, s2 toggles kill
 `default_nettype none
 
 module top #(
-    parameter        UART_DIV  = 234,       //115200 baud, both ways
+    parameter        UART_DIV  = 234,       //115200
     parameter        HALF      = 16,
     parameter        GAP       = 2700000,
     parameter        SCEN_GAP  = 135000,
     parameter        BTN_HOLD  = 270000,
     parameter        BURST     = 4,
     parameter        REFILL    = 6750000,
-    parameter        HOST_HOLD = 27000000,  //host mode lasts 1 s past its last byte
+    parameter        HOST_HOLD = 27000000,  //1 s
     parameter [63:0] SYMBOL    = "AAPL    ",
     parameter [31:0] LIMIT     = 1500000
 ) (
@@ -42,7 +38,6 @@ module top #(
         scen_d <= scen_t;
     wire go = scen_t != scen_d;
 
-    //the pc's feed
     wire [7:0] rx_data;
     wire       rx_valid;
     uart_rx #(.DIV(UART_DIV)) u_urx (.clk(clk), .rx(uart_rx), .data(rx_data), .valid(rx_valid));
@@ -65,7 +60,6 @@ module top #(
         if (rx_valid)  hold <= HOST_HOLD - 1;
         else if (host) hold <= hold - 1'b1;
 
-    //the on-chip feed, out on the pins and back in
     feed_gen #(.HALF(HALF), .GAP(GAP), .SCEN_GAP(SCEN_GAP)) u_feed (
         .clk (clk),
         .en  (!host),
@@ -88,7 +82,6 @@ module top #(
         .eof  (s_eof)
     );
 
-    //a frame cut off by the switch is closed by the next sof and fails its checks
     wire [7:0] in_data  = host ? h_data  : s_data;
     wire       in_valid = host ? h_valid : s_valid;
     wire       in_sof   = host ? h_sof   : s_sof;
@@ -146,7 +139,6 @@ module top #(
     );
     assign ord_tx = uart_tx;
 
-    //sent and stomped flip their leds, the last one is on in host mode
     reg        n_sent = 0, n_stomp = 0;
     reg [24:0] beat   = 0;
     always @(posedge clk) begin

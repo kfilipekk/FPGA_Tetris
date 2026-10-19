@@ -8,8 +8,6 @@ import model as m
 
 
 def expected(token, qty, stock, price, px_fire, dec, fires):
-    """the frame for a run, from the cycle the price came in, the verdict (cycle and
-    commit) and the cycle each byte left. a byte uses the state from before its clock"""
     payload = bytearray(m.ouch_enter(m.token_of(token), qty, stock, price))
     have_px = lambda c: px_fire is not None and px_fire < c
     for k in range(28, 32):
@@ -28,7 +26,6 @@ def expected(token, qty, stock, price, px_fire, dec, fires):
 
 
 async def run(dut, token, qty, stock, price, px_at, dec_at, commit, p_ready):
-    """one order. px_at and dec_at are clocks after start, None for never"""
     await FallingEdge(dut.clk)
     dut.start.value = 1
     dut.token.value = token
@@ -94,7 +91,6 @@ async def random_timing(dut):
 
 @cocotb.test()
 async def early_verdict(dut):
-    """price and commit before the price field: good, sent strobe once"""
     await setup(dut)
     out, fires, px_fire, dec = await run(dut, 0x0100000000002A, 100, b"AAPL    ",
                                          1499000, 2, 4, 1, 1.0)
@@ -104,7 +100,6 @@ async def early_verdict(dut):
 
 @cocotb.test()
 async def late_verdict(dut):
-    """a commit after the fcs has started is too late"""
     await setup(dut)
     out, *_ = await run(dut, 1, 100, b"AAPL    ", 1499000, 2, 50, 1, 1.0)
     assert m.check_frame(out) == "stomped"

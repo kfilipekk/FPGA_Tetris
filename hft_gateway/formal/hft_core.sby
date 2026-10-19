@@ -1,4 +1,3 @@
-#the engine with every module's own properties, a small bucket
 [tasks]
 prove
 cover
@@ -16,7 +15,7 @@ smtbmc yices
 read -formal crc32.v itch_parser.v risk_gate.v ouch_tx.v hft_core.v
 chparam -set BURST 2 -set REFILL 8 hft_core
 prep -top hft_core
-#a full window of grants needs grants closer than one frame, covered on its own
+#reached in risk_gate.sby
 cover: chformal -remove -cover *risk_gate*
 
 [files]

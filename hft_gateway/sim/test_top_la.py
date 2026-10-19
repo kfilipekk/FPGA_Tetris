@@ -1,5 +1,4 @@
-#the board at its real rates, its eight header pins sampled at 24 mhz into a pulseview
-#file, and that file through the same checks a bench capture goes through
+#the board at its real rates, through a simulated 24 mhz capture
 import os
 
 import cocotb
@@ -46,7 +45,6 @@ async def burst_capture(dut):
     changes = []
     cocotb.start_soon(record(dut, changes))
 
-    #the first streamed message and its order, then s1
     await ClockCycles(dut.clk, 200000)
     dut.btn_s1.value = 0
     await ClockCycles(dut.clk, 20)
@@ -62,11 +60,8 @@ async def burst_capture(dut):
     dut._log.info("%d orders: %s", len(whys), whys)
     dut._log.info("sck edge to start bit %.0f to %.0f ns", min(lats), max(lats))
     assert r["problems"] == []
-    #every path, then commits until the bucket runs dry (the streamed one may have
-    #taken a token)
     burst = whys[-9:]
     assert burst[:4] == ["", "price", "fcs", "limits"]
     n = burst[4:].count("")
     assert burst[4:] == [""] * n + ["risk"] * (5 - n) and n < 5
-    #6 clocks is 222 ns, give or take a 42 ns sample
     assert all(170 < x < 275 for x in lats)

@@ -1,4 +1,4 @@
-//8n1, DIV clocks per bit, a strobe per byte. a bad start or stop bit drops it
+//8n1, DIV clocks per bit
 `default_nettype none
 
 module uart_rx #(
@@ -25,7 +25,7 @@ module uart_rx #(
         if (bits == 0) begin
             if (!s[1]) begin
                 bits <= 4'd1;
-                baud <= MID[W-1:0];     //to the middle of the start bit
+                baud <= MID[W-1:0];
             end
         end else if (baud != 0) begin
             baud <= baud - 1'b1;

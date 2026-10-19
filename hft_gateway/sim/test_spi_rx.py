@@ -8,7 +8,6 @@ from feed_util import spi_send
 
 
 async def watch(dut, out):
-    """frames as lists of (byte, sof), closed on eof"""
     cur = []
     while True:
         await RisingEdge(dut.clk)
@@ -55,7 +54,6 @@ async def partial_byte_dropped(dut):
     got = []
     cocotb.start_soon(watch(dut, got))
 
-    #five clocks then cs up, then a clean frame
     dut.cs_n.value = 0
     for _ in range(5):
         dut.mosi.value = 1
