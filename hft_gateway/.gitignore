@@ -5,5 +5,5 @@ results.xml
 __pycache__/
 *.vcd
 *.fst
-captures/
+/captures/
 **/formal/*/

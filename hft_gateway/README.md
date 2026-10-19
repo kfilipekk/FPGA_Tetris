@@ -18,18 +18,19 @@ A trading system reads a stream of messages from an exchange ("someone wants to 
 | Synthetic feed with cut and corrupted frames | 5,000 messages, 0 mismatches |
 | Self test | settings, a good order, an over-limit one, the kill switch, all as expected |
 | On-chip stream into the exchange checker | 0 rule breaks |
+| SCK edge to the order's start bit, logic analyser at 24 MHz | 208 to 250 ns over 15 orders, 6 clocks (222 ns) give or take one 42 ns sample |
+| The S1 burst on the analyser | every path in order: commit, price, FCS, collar, no order for MSFT, commits, then the rate limiter |
 
 ### From Simulation and Place and Route
 | Measurement | Result |
 |-------------|--------|
 | Symbol match to first order byte | 2 clocks (74 ns at 27 MHz), inside the core |
 | SCK edge to the order's start bit | 6 clocks (222 ns), pin to pin, synchronisers included |
-| The same, through a simulated 24 MHz logic analyser | 208 to 250 ns, one sample either side |
 | Last feed byte to verdict | 3 clocks, the risk gate is one of them |
 | Fabric | 2675 LUT4 (30%), 1185 DFF, 2 DSP, 51 MHz post-route (27 MHz needed) |
 | Verification | 4 SymbiYosys proofs (k-induction), 34 cocotb tests and 15 host tests against one Python model, CI |
 
-The latency rows are waiting on a bench capture; `host/capture.py` turns one into the same table.
+Both captures are in [docs/captures](docs/captures), PulseView files that `host/capture.py` checks.
 
 ### What Is Proven
 - **ouch_tx** - Every order is exactly 53 bytes and never cut short. The FCS is the true CRC only if a commit arrived before the first FCS byte left and the price arrived before its field. Every other case is stomped.
@@ -74,9 +75,9 @@ order                     | O | token 1..14 | B | qty | stock | price 28..31 | .
 ```
 The order needs the price 28 bytes in and the verdict 49 bytes in. The feed delivers them 4 and 8 bytes after the trigger. So the order port can run about six times faster than the feed before a verdict comes too late. If it does, the frame is stomped, never sent unchecked.
 
-![Speculation, simulated](docs/img/speculation_sim.png)
+![Speculation on the board](docs/img/speculation.png)
 
-One order from a simulated logic analyser capture at the board's real rates. The order's start bit leaves on ord_tx while the price and FCS are still arriving on feed_mosi; spec stays high until the last feed byte, then tx_commit. Simulated, not yet a bench capture.
+One order on the logic analyser. The order's start bit leaves on ord_tx while the price and FCS are still arriving on feed_mosi; spec stays high until the last feed byte, then tx_commit.
 
 ## Getting Started
 
@@ -123,7 +124,7 @@ One order from a simulated logic analyser capture at the board's real rates. The
    The board goes to host mode on the first byte and back to its own feed a second after the last. For 1 Mbaud, build with `make PARAMS="chparam -set UART_DIV 27 top"` and pass `--baud 1000000`.
 
 ### Logic Analyser
-The engine's state sits on eight neighbouring header pins. Check them against the board's silkscreen before clipping on.
+The engine's state sits on eight neighbouring header pins, plus a ground.
 
 | Ch | Pin | Signal | Decode |
 |----|-----|--------|--------|
@@ -142,9 +143,9 @@ python3 host/capture.py burst.sr --plot burst.png
 ```
 It pairs every order with the SCK edge that triggered it, prints the pin to pin latency, checks the commit and abort lines against each order's FCS and each order against the model.
 
-![Burst, simulated](docs/img/burst_sim.png)
+![Burst on the board](docs/img/burst.png)
 
-The burst from the same simulated capture, which `make sim` checks with `capture.py` exactly as it would a real one.
+The S1 burst, triggered on risk_ok falling as the bucket runs dry (`sigrok-cli -d fx2lafw --config samplerate=24m:captureratio=60 --samples 2m --triggers D5=f`). `make sim` runs the same checks on a simulated capture at the board's rates.
 
 ## Applications
 
@@ -156,7 +157,6 @@ I made this project to explore:
 
 ## Future Plans
 
-- A bench capture of the burst in place of the simulated one
 - Time the PC feed's trigger edge, which is asynchronous to the board's clock, with the carry-chain TDC from [fpga_gps_clock](https://github.com/kfilipekk/fpga_gps_clock) for a picosecond wire-to-wire latency histogram
 - SoupBinTCP framing on the order side, and more than one order in flight
 
