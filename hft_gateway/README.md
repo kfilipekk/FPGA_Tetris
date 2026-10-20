@@ -16,7 +16,8 @@ On the board:
 | The 1,459 AAPL sells among them | 78 committed, 723 stomped on price, 658 by the rate limiter |
 | Synthetic feed with cut and corrupted frames | 5,000 messages, 0 mismatches |
 | LSE build, synthetic MITCH feed | 5,000 messages, 0 mismatches |
-| SCK edge to order start bit, 24 MHz analyser | 208-250 ns (6 clocks, ±1 sample) |
+| SCK edge to order start bit, 24 MHz analyser | 208-250 ns (6 clocks, ±1 sample), both venues |
+| S1 burst on the analyser, both venues | every path in order, 0 mismatches |
 
 From simulation and place and route:
 
@@ -39,6 +40,10 @@ No LSE market data is free, so the LSE build is tested against the published spe
 The order needs the price and verdict much later than the feed delivers them, so it can start on the symbol. A late verdict or a missing price stomps the frame.
 
 ![Speculation](docs/img/speculation.png)
+
+The same on the LSE build. The instrument id comes before the price in MITCH, so the order starts with more of the feed frame still to come.
+
+![Speculation, LSE](docs/img/speculation_lse.png)
 
 Proven with k-induction:
 - **order_tx** - a full frame every time, and a good FCS only after a commit that beat it, for both venues
@@ -95,5 +100,9 @@ For 1 Mbaud, build with `make PARAMS="chparam -set UART_DIV 27 top"` and pass `-
 sigrok-cli -d fx2lafw --config samplerate=24m:captureratio=60 --samples 2m --triggers D5=f -o burst.sr
 python3 host/capture.py burst.sr --plot burst.png
 ```
+
+On the LSE build the burst is longer, so take `--samples 4m` at `captureratio=75` and pass `--venue lse`.
+
+![Burst, LSE](docs/img/burst_lse.png)
 
 ![Burst](docs/img/burst.png)

@@ -116,6 +116,15 @@ def test_bench_burst():
     assert all(0.2e-6 < row["latency"] < 0.26e-6 for row in r["rows"])
 
 
+def test_bench_burst_lse():
+    here = os.path.dirname(os.path.abspath(__file__))
+    r = c.analyse(os.path.join(here, "..", "docs", "captures", "burst_lse.sr"), venue="lse")
+    assert r["problems"] == []
+    assert [row["why"] for row in r["rows"]] == \
+        ["", "price", "fcs", "limits", "", "", "", "risk", "risk"]
+    assert all(0.2e-6 < row["latency"] < 0.26e-6 for row in r["rows"])
+
+
 if __name__ == "__main__":
     for name, f in list(globals().items()):
         if name.startswith("test_"):
