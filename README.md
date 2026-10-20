@@ -18,6 +18,7 @@ Collection of FPGA projects for the Tang Nano 9K development board featuring a s
 | **hdmi_test_working** | HDMI test pattern output (640×480@60Hz) |
 | **hdmi_tetris** | Full Tetris game with HDMI output via TMDS encoding |
 | **spi_lcd_tetris** | Tetris for SPI LCD displays (ST7789/ILI9341, 128×160) |
+| **hft_gateway** | Speculative ITCH to OUCH order gateway with a one-clock risk gate, tested on real NASDAQ data |
 
 ## Features
 
