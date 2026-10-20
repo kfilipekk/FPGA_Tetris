@@ -1,0 +1,24 @@
+[tasks]
+prove prv
+cover cov short
+prove_lse prv lse
+cover_lse cov long lse
+
+[options]
+prv: mode prove
+prv: depth 16
+cov: mode cover
+short: depth 64
+long: depth 140
+
+[engines]
+smtbmc yices
+
+[script]
+read -formal crc32.v order_tx.v
+lse: chparam -set VENUE 1 order_tx
+prep -top order_tx
+
+[files]
+../rtl/crc32.v
+../rtl/order_tx.v

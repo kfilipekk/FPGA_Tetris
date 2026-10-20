@@ -1,6 +1,7 @@
 #feeds the board from the pc and checks every order against the model
 #  python3 replay.py /dev/ttyUSB1 --synthetic 2000
 #  python3 replay.py /dev/ttyUSB1 --itch aapl.itch --symbol AAPL --limit 162.80
+#  python3 replay.py /dev/ttyUSB1 --venue lse --synthetic 2000
 import argparse
 import gzip
 import random
@@ -29,22 +30,24 @@ def read_itch(path, symbol=None, count=None):
             yield msg + m.fcs(msg)
 
 
-def synthetic(count, seed):
+def synthetic(count, seed, venue="nasdaq"):
     rnd = random.Random(seed)
+    n = m.VENUES[venue]["feed"] + 4
     for s in range(count):
-        msg = m.gen_message(s, 0, ts=rnd.getrandbits(48))
+        msg = m.gen_message(s, 0, ts=rnd.getrandbits(48), venue=venue)
         r = rnd.random()
         if r < 0.05:
-            msg = msg[:rnd.randint(1, 39)]
+            msg = msg[:rnd.randint(1, n - 1)]
         elif r < 0.1:
-            i = rnd.randrange(40)
+            i = rnd.randrange(n)
             msg = msg[:i] + bytes([msg[i] ^ (1 << rnd.randrange(8))]) + msg[i + 1:]
         yield msg
 
 
 class Board:
-    def __init__(self, port, baud):
+    def __init__(self, port, baud, venue="nasdaq"):
         import serial
+        self.venue = venue
         self.s = serial.Serial(port, baud, timeout=0.01)
         self.byte_time = 10 / baud
         self.free_at = 0.0
@@ -66,7 +69,7 @@ class Board:
             if got:
                 self.buf += got
                 end = time.monotonic() + wait
-            fr, self.buf = x.hunt(self.buf)
+            fr, self.buf = x.hunt(self.buf, self.venue)
             out += fr
         return out
 
@@ -74,22 +77,22 @@ class Board:
         end = max(time.monotonic(), self.free_at) + wait
         while time.monotonic() < end:
             self.buf += self.s.read(4096)
-            fr, self.buf = x.hunt(self.buf)
+            fr, self.buf = x.hunt(self.buf, self.venue)
             if fr:
                 self.extra += fr[1:]
                 return fr[0]
         return None
 
 
-def check(msg, got, symbol, limit, kill=False):
-    v = m.verdict(msg, symbol=symbol, limit=limit, kill=kill)
+def check(msg, got, symbol, limit, kill=False, venue="nasdaq"):
+    v = m.verdict(msg, symbol=symbol, limit=limit, kill=kill, venue=venue)
     if v is None:
         return ("none", None) if got is None else ("none", "an order nobody asked for")
     payload, why = v
     if got is None:
         return why or "commit", "no order came back"
     frame, status = got
-    if frame[:m.OUCH_LEN] != payload:
+    if frame[:m.VENUES[venue]["order"]] != payload:
         return why or "commit", "order differs from the model"
     if status == "good" and why:
         return why, "committed what the model rejects"
@@ -99,13 +102,14 @@ def check(msg, got, symbol, limit, kill=False):
 
 
 def run(board, msgs, symbol, limit, rate=None, log=print):
+    v = board.venue
     counts, problems, n = {}, 0, 0
     for msg in msgs:
         t0 = time.monotonic()
         board.send(msg)
-        expect = m.verdict(msg, symbol=symbol, limit=limit) is not None
+        expect = m.verdict(msg, symbol=symbol, limit=limit, venue=v) is not None
         got = board.order() if expect else None
-        name, problem = check(msg, got, symbol, limit)
+        name, problem = check(msg, got, symbol, limit, venue=v)
         counts[name] = counts.get(name, 0) + 1
         n += 1
         if problem:
@@ -122,9 +126,16 @@ def run(board, msgs, symbol, limit, rate=None, log=print):
     return counts, problems, n
 
 
+def add(venue, ref, symbol, price):
+    if venue == "lse":
+        return m.mitch_add(ref, b"S", 100, int.from_bytes(symbol, "big") & 0xFFFFFFFF, price)
+    return m.itch_add(ref, b"S", 100, symbol, price)
+
+
 def self_test(board, symbol, limit):
-    good = m.itch_add(0xF00D, b"S", 100, symbol, limit - 100)
-    over = m.itch_add(0xF00E, b"S", 100, symbol, limit + 100)
+    step = 100 * m.VENUES[board.venue]["scale"]
+    good = add(board.venue, 0xF00D, symbol, limit - step)
+    over = add(board.venue, 0xF00E, symbol, limit + step)
     steps = [(False, good, "good"), (False, over, "stomped"),
              (True, good, "stomped"), (False, good, "good")]
     bad = 0
@@ -136,8 +147,9 @@ def self_test(board, symbol, limit):
         status = got[1] if got else None
         ok = status == want
         bad += not ok
-        print("  kill %-5s price %9.4f -> %-8s %s" % (kill, (limit + (100 if msg is over else -100)) / 1e4,
-                                                     status, "ok" if ok else "WANT " + want))
+        price = (limit + (step if msg is over else -step)) / (1e4 * m.VENUES[board.venue]["scale"])
+        print("  kill %-5s price %9.4f -> %-8s %s" % (kill, price, status,
+                                                     "ok" if ok else "WANT " + want))
     return bad
 
 
@@ -147,17 +159,21 @@ def main():
     ap.add_argument("--baud", type=int, default=115200)
     ap.add_argument("--synthetic", type=int, metavar="N")
     ap.add_argument("--itch", metavar="FILE")
-    ap.add_argument("--symbol", default="AAPL")
-    ap.add_argument("--limit", type=float, default=150.0, help="dollars")
+    ap.add_argument("--venue", default="nasdaq", choices=sorted(m.VENUES))
+    ap.add_argument("--symbol", help="ticker on nasdaq, instrument id on lse")
+    ap.add_argument("--limit", type=float, default=150.0, help="in the venue's currency")
     ap.add_argument("--count", type=int, help="add orders to take from the file")
     ap.add_argument("--only-symbol", action="store_true", help="skip other stocks' adds")
     ap.add_argument("--rate", type=float, help="messages a second, default as fast as it goes")
     ap.add_argument("--seed", type=int, default=1)
     args = ap.parse_args()
 
-    symbol = m.symbol_of(args.symbol)
-    limit = int(round(args.limit * 1e4))
-    board = Board(args.port, args.baud)
+    if args.itch and args.venue != "nasdaq":
+        ap.error("--itch takes a nasdaq file")
+    v = m.VENUES[args.venue]
+    symbol = m.symbol_of(args.symbol, args.venue) if args.symbol else v["symbol"]
+    limit = int(round(args.limit * 1e4 * v["scale"]))
+    board = Board(args.port, args.baud, args.venue)
     board.frames(0.3)
 
     print("self test")
@@ -167,7 +183,7 @@ def main():
     if args.itch:
         msgs = read_itch(args.itch, symbol if args.only_symbol else None, args.count)
     else:
-        msgs = synthetic(args.synthetic or 1000, args.seed)
+        msgs = synthetic(args.synthetic or 1000, args.seed, args.venue)
     t = time.monotonic()
     counts, bad, n = run(board, msgs, symbol, limit, args.rate)
     dt = time.monotonic() - t

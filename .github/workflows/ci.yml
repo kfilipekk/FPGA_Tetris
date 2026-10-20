@@ -15,11 +15,13 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - run: python3 -m pip install -r requirements.txt
       - run: make lint
+      - run: make lint-lse
       - run: make sim
       - run: make
+      - run: make lse
       - run: make formal
       - run: for t in host/test_*.py; do python3 $t || exit 1; done
       - uses: actions/upload-artifact@v4
         with:
           name: bitstream
-          path: hft_gateway/build/*.fs
+          path: hft_gateway/build*/*.fs

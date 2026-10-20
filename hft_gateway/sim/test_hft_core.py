@@ -1,3 +1,4 @@
+import os
 import random
 
 import cocotb
@@ -6,6 +7,33 @@ from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly, RisingEdge
 
 import model as m
 from feed_util import byte_capture, stream_send
+
+V = os.environ.get("VENUE", "nasdaq")
+VN = m.VENUES[V]
+N = VN["feed"]
+SYM = VN["symbol"]
+OTHER = VN["stocks"][1]
+LIMIT = VN["limit"]
+TRIG = 23 if V == "lse" else 32
+PXI, PXN = (67, 8) if V == "lse" else (28, 4)
+
+
+def px(p4):
+    return p4 * VN["scale"]
+
+
+def add(ref, shares, sym, price, bad=False):
+    if V == "lse":
+        return m.mitch_add(ref, b"S", shares, int.from_bytes(sym, "big"), price, bad=bad)
+    return m.itch_add(ref, b"S", shares, sym, price, bad=bad)
+
+
+def verdict(msg, **kw):
+    return m.verdict(msg, venue=V, **kw)
+
+
+def check(f):
+    return m.check_frame(f, V)
 
 
 async def ready_gen(dut, p):
@@ -17,14 +45,14 @@ async def ready_gen(dut, p):
 async def setup(dut, p_ready=1.0):
     for s in (dut.in_valid, dut.in_data, dut.in_sof, dut.in_eof, dut.kill, dut.out_ready):
         s.value = 0
-    dut.symbol.value = int.from_bytes(m.SYMBOL, "big")
-    dut.limit.value = m.LIMIT
+    dut.symbol.value = int.from_bytes(SYM, "big")
+    dut.limit.value = LIMIT
     cocotb.start_soon(Clock(dut.clk, 37, "ns").start(start_high=False))
     p = [p_ready]
     cocotb.start_soon(ready_gen(dut, p))
     frames = []
     cocotb.start_soon(byte_capture(dut.clk, dut.out_valid, dut.out_ready, dut.out_data,
-                                   frames, m.FRAME_LEN))
+                                   frames, m.frame_len(V)))
     await ClockCycles(dut.clk, 3)
     return frames, p
 
@@ -40,17 +68,17 @@ def mixed(n, seed):
     random.seed(seed)
     out = []
     for s in range(n):
-        msg = m.gen_message(s, 0, ts=random.getrandbits(48))
+        msg = m.gen_message(s, 0, ts=random.getrandbits(48), venue=V)
         r = random.random()
         if r < 0.08:
-            msg = msg[:random.randint(1, 39)]
+            msg = msg[:random.randint(1, N + 3)]
         elif r < 0.14:
-            i = random.randrange(40)
+            i = random.randrange(N + 4)
             msg = msg[:i] + bytes([msg[i] ^ (1 << random.randrange(8))]) + msg[i + 1:]
         elif r < 0.4:
             #ours, near the limit
-            msg = m.itch_add(random.getrandbits(64), b"S", random.randint(1, 400), m.SYMBOL,
-                             m.LIMIT + random.randint(-3, 3), bad=random.random() < 0.1)
+            msg = add(random.getrandbits(64), random.randint(1, 400), SYM,
+                      LIMIT + random.randint(-3, 3), bad=random.random() < 0.1)
         out.append(msg)
     return out
 
@@ -64,7 +92,7 @@ async def against_model(dut):
         p[0] = random.choice([1.0, 0.7, 0.3])
         await stream_send(dut, msg, (0, 2))
         await drain(dut)
-        v = m.verdict(msg)
+        v = verdict(msg)
         if v is not None:
             want.append(m.frame_of(v[0], v[1] == ""))
             whys.add(v[1])
@@ -75,25 +103,25 @@ async def against_model(dut):
 @cocotb.test()
 async def kill_stomps(dut):
     frames, _ = await setup(dut)
-    msg = m.itch_add(1, b"S", 100, m.SYMBOL, 1499000)
+    msg = add(1, 100, SYM, px(1499000))
     await stream_send(dut, msg)
     await drain(dut)
     await FallingEdge(dut.clk)
     dut.kill.value = 1
     await stream_send(dut, msg)
     await drain(dut)
-    assert [m.check_frame(f) for f in frames] == ["good", "stomped"]
+    assert [check(f) for f in frames] == ["good", "stomped"]
 
 
 @cocotb.test()
 async def price_too_late(dut):
     frames, _ = await setup(dut)
-    msg = m.itch_add(2, b"S", 100, m.SYMBOL, 1499000)
-    await stream_send(dut, msg, (12, 12))
+    msg = add(2, 100, SYM, px(1499000))
+    await stream_send(dut, msg, (16, 16))
     await drain(dut)
     assert len(frames) == 1
-    assert m.check_frame(frames[0]) == "stomped"
-    assert frames[0][28:32] == bytes(4)
+    assert check(frames[0]) == "stomped"
+    assert frames[0][PXI:PXI + PXN] == bytes(PXN)
 
 
 @cocotb.test()
@@ -109,20 +137,20 @@ async def busy_misses(dut):
                 missed.append(1)
     cocotb.start_soon(watch())
 
-    a = m.itch_add(3, b"S", 100, m.SYMBOL, 1499000)
-    b = m.itch_add(4, b"S", 100, m.SYMBOL, 1499000)
+    a = add(3, 100, SYM, px(1499000))
+    b = add(4, 100, SYM, px(1499000))
     await stream_send(dut, a)
     await stream_send(dut, b)
     p[0] = 1.0
     await drain(dut)
-    assert frames == [m.frame_of(m.verdict(a)[0], True)]
+    assert frames == [m.frame_of(verdict(a)[0], True)]
     assert missed == [1]
 
 
 @cocotb.test()
 async def latency(dut):
     frames, _ = await setup(dut)
-    msg = m.itch_add(5, b"S", 100, m.SYMBOL, 1499000)
+    msg = add(5, 100, SYM, px(1499000))
     t = {}
 
     async def watch():
@@ -133,9 +161,9 @@ async def latency(dut):
             cyc += 1
             if int(dut.in_valid.value):
                 n += 1
-                if n == 32:
+                if n == TRIG:
                     t["sym"] = cyc
-                if n == 40:
+                if n == N + 4:
                     t["fcs"] = cyc
             if int(dut.out_valid.value) and "out" not in t:
                 t["out"] = cyc
@@ -144,40 +172,39 @@ async def latency(dut):
     cocotb.start_soon(watch())
     await stream_send(dut, msg)
     await drain(dut)
-    assert m.check_frame(frames[0]) == "good"
+    assert check(frames[0]) == "good"
     #inputs change on the falling edge
     tick_to_order = t["out"] - t["sym"] + 1
-    verdict = t["commit"] - t["fcs"] + 1
+    verdict_clocks = t["commit"] - t["fcs"] + 1
     dut._log.info("first order byte %d clocks after the symbol, commit %d after the fcs",
-                  tick_to_order, verdict)
+                  tick_to_order, verdict_clocks)
     assert tick_to_order == 2
-    assert verdict == 3
+    assert verdict_clocks == 3
 
 
 @cocotb.test()
 async def settings_held_from_launch(dut):
     frames, _ = await setup(dut)
-    msft = m.symbol_of("MSFT")
-    a = m.itch_add(10, b"S", 100, msft, 1550000)
+    a = add(10, 100, OTHER, px(1550000))
     await stream_send(dut, a)
     await drain(dut)
     assert frames == []                         #not our symbol yet
     await FallingEdge(dut.clk)
-    dut.symbol.value = int.from_bytes(msft, "big")
+    dut.symbol.value = int.from_bytes(OTHER, "big")
     await stream_send(dut, a)
-    await drain(dut)                            #over $150
+    await drain(dut)                            #over 150
     await FallingEdge(dut.clk)
-    dut.limit.value = 1600000
+    dut.limit.value = px(1600000)
     await stream_send(dut, a)
-    await drain(dut)                            #under $160
+    await drain(dut)                            #under 160
     #the limit drops once the order is going: it keeps the one it launched with
-    b = m.itch_add(11, b"S", 100, msft, 1550000)
+    b = add(11, 100, OTHER, px(1550000))
     cocotb.start_soon(stream_send(dut, b))
     while not int(dut.out_valid.value):
         await RisingEdge(dut.clk)
     await FallingEdge(dut.clk)
-    dut.limit.value = 1000000
+    dut.limit.value = px(1000000)
     await drain(dut)
     await ClockCycles(dut.clk, 20)
-    assert [m.check_frame(f) for f in frames] == ["stomped", "good", "good"]
-    assert frames[1] == m.frame_of(m.verdict(a, symbol=msft, limit=1600000)[0], True)
+    assert [check(f) for f in frames] == ["stomped", "good", "good"]
+    assert frames[1] == m.frame_of(verdict(a, symbol=OTHER, limit=px(1600000))[0], True)

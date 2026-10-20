@@ -1,19 +1,21 @@
-//itch in, ouch out. launches on the symbol, commits only if price, fcs and risk agree
+//feed in, order out. launches on the symbol, commits only if price, fcs and risk agree
+//venue 0 nasdaq itch to ouch, 1 lse mitch to native
 `default_nettype none
 
 module hft_core #(
+    parameter        VENUE        = 0,
     parameter [31:0] ORDER_QTY    = 100,
     parameter        BURST        = 4,
     parameter        REFILL       = 6750000,
-    parameter [31:0] PX_LO        = 1000000,
-    parameter [31:0] PX_HI        = 2000000,
+    parameter [63:0] PX_LO        = VENUE ? 64'd10000000000   : 64'd1000000,   //100
+    parameter [63:0] PX_HI        = VENUE ? 64'd20000000000   : 64'd2000000,   //200
     parameter [15:0] MAX_QTY      = 500,
-    parameter [47:0] MAX_NOTIONAL = 48'd500000000
+    parameter [79:0] MAX_NOTIONAL = VENUE ? 80'd5000000000000 : 80'd500000000  //50,000
 ) (
     input  wire        clk,
     input  wire        kill,
     input  wire [63:0] symbol,
-    input  wire [31:0] limit,
+    input  wire [63:0] limit,
     input  wire        in_valid,
     input  wire [7:0]  in_data,
     input  wire        in_sof,
@@ -31,26 +33,22 @@ module hft_core #(
 );
 
     wire        trig, px_valid, done, ok;
-    /* verilator lint_off UNUSEDSIGNAL */
-    wire [63:0] ref_num;
-    /* verilator lint_on UNUSEDSIGNAL */
-    wire [31:0] shares, price;
+    wire [63:0] ref_num, price;
+    wire [31:0] shares;
 
-    itch_parser u_parse (
-        .clk     (clk),
-        .symbol  (symbol),
-        .valid   (in_valid),
-        .data    (in_data),
-        .sof     (in_sof),
-        .eof     (in_eof),
-        .trig    (trig),
-        .ref_num (ref_num),
-        .shares  (shares),
-        .px_valid(px_valid),
-        .price   (price),
-        .done    (done),
-        .ok      (ok)
-    );
+    generate if (VENUE == 0) begin : g_itch
+        itch_parser u_parse (
+            .clk(clk), .symbol(symbol), .valid(in_valid), .data(in_data), .sof(in_sof),
+            .eof(in_eof), .trig(trig), .ref_num(ref_num), .shares(shares),
+            .px_valid(px_valid), .price(price), .done(done), .ok(ok)
+        );
+    end else begin : g_mitch
+        mitch_parser u_parse (
+            .clk(clk), .symbol(symbol), .valid(in_valid), .data(in_data), .sof(in_sof),
+            .eof(in_eof), .trig(trig), .ref_num(ref_num), .shares(shares),
+            .px_valid(px_valid), .price(price), .done(done), .ok(ok)
+        );
+    end endgenerate
 
     wire busy;
     wire launch = trig && !busy;
@@ -58,8 +56,8 @@ module hft_core #(
 
     reg        live   = 0;
     reg        px_ok  = 0;
-    reg [31:0] px     = 0;
-    reg [31:0] lim    = 0;
+    reg [63:0] px     = 0;
+    reg [63:0] lim    = 0;
     reg [15:0] qty    = 0;
     wire [15:0] size  = (shares < ORDER_QTY) ? shares[15:0] : ORDER_QTY[15:0];
     always @(posedge clk) begin
@@ -99,11 +97,11 @@ module hft_core #(
     wire decide = (done && live && !(ok && px_ok)) || grant || deny;
 
     wire good, bad;
-    ouch_tx u_tx (
+    order_tx #(.VENUE(VENUE)) u_tx (
         .clk     (clk),
         .start   (launch),
         .stock   (symbol),
-        .token   (ref_num[55:0]),
+        .token   (ref_num),
         .qty     ({16'd0, size}),
         .px_valid(px_valid && live),
         .price   (price),

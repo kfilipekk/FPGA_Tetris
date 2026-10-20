@@ -12,9 +12,9 @@ cover: depth 64
 smtbmc yices
 
 [script]
-read -formal crc32.v ouch_tx.v
-prep -top ouch_tx
+read -formal crc32.v mitch_parser.v
+prep -top mitch_parser
 
 [files]
 ../rtl/crc32.v
-../rtl/ouch_tx.v
+../rtl/mitch_parser.v

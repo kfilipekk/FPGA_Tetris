@@ -1,17 +1,16 @@
-//tang nano 9k. s1 plays the burst, s2 toggles kill
+//tang nano 9k. s1 plays the burst, s2 toggles kill. venue 0 nasdaq, 1 lse
 `default_nettype none
 
 module top #(
+    parameter        VENUE     = 0,
     parameter        UART_DIV  = 234,       //115200
     parameter        HALF      = 16,
     parameter        GAP       = 2700000,
-    parameter        SCEN_GAP  = 135000,
+    parameter        SCEN_GAP  = 0,         //0: an order's length for the venue
     parameter        BTN_HOLD  = 270000,
     parameter        BURST     = 4,
     parameter        REFILL    = 6750000,
-    parameter        HOST_HOLD = 27000000,  //1 s
-    parameter [63:0] SYMBOL    = "AAPL    ",
-    parameter [31:0] LIMIT     = 1500000
+    parameter        HOST_HOLD = 27000000   //1 s
 ) (
     input  wire       clk,
     input  wire       btn_s1,
@@ -28,6 +27,11 @@ module top #(
     output wire       tx_commit,
     output wire       tx_abort
 );
+
+    //lse prices carry 8 decimals, nasdaq 4
+    localparam [63:0] SYMBOL = VENUE ? 64'd1001 : "AAPL    ";
+    localparam [63:0] LIMIT  = VENUE ? 64'd15000000000  : 64'd1500000;
+    localparam integer SGAP  = SCEN_GAP != 0 ? SCEN_GAP : VENUE ? 340000 : 135000;
 
     wire scen_t, btn_kill;
     btn_toggle #(.HOLD(BTN_HOLD)) u_s1 (.clk(clk), .btn(btn_s1), .state(scen_t));
@@ -60,7 +64,7 @@ module top #(
         if (rx_valid)  hold <= HOST_HOLD - 1;
         else if (host) hold <= hold - 1'b1;
 
-    feed_gen #(.HALF(HALF), .GAP(GAP), .SCEN_GAP(SCEN_GAP)) u_feed (
+    feed_gen #(.VENUE(VENUE), .HALF(HALF), .GAP(GAP), .SCEN_GAP(SGAP)) u_feed (
         .clk (clk),
         .en  (!host),
         .go  (go),
@@ -88,7 +92,7 @@ module top #(
     wire       in_eof   = host ? h_eof   : s_eof;
 
     wire [63:0] symbol;
-    wire [31:0] limit;
+    wire [63:0] limit;
     wire        host_kill;
     cfg #(.SYMBOL(SYMBOL), .LIMIT(LIMIT)) u_cfg (
         .clk   (clk),
@@ -107,7 +111,7 @@ module top #(
 
     wire [7:0] out_data;
     wire       out_valid, out_ready, sent, stomped;
-    hft_core #(.BURST(BURST), .REFILL(REFILL)) u_core (
+    hft_core #(.VENUE(VENUE), .BURST(BURST), .REFILL(REFILL)) u_core (
         .clk      (clk),
         .kill     (kill),
         .symbol   (symbol),

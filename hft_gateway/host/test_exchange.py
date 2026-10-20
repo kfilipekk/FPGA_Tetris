@@ -64,6 +64,19 @@ def test_stream_clean():
     assert n > 500
 
 
+def test_lse():
+    def lorder(seq, kind, good=None):
+        payload, why = m.verdict(m.gen_message(seq, kind, venue="lse"), venue="lse")
+        return m.frame_of(payload, why == "" if good is None else good)
+    frames = [lorder(k, k) for k in (1, 2, 3, 4, 6)]
+    got, _ = x.hunt(bytearray(b"\x02\x00" + b"".join(frames)), "lse")
+    assert [f for f, _ in got] == frames
+    whys = [x.judge(f, st, venue="lse")["why"] for f, st in got]
+    assert whys == ["", "price", "fcs", "limits", ""]
+    assert x.judge(lorder(2, 2, good=True), "good", venue="lse")["bad"]
+    assert x.hunt(bytearray(b"".join(frames)), "nasdaq")[0] == []
+
+
 if __name__ == "__main__":
     for name, f in list(globals().items()):
         if name.startswith("test_"):

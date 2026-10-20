@@ -14,7 +14,7 @@ module itch_parser (
     output reg  [63:0] ref_num  = 0,
     output reg  [31:0] shares   = 0,
     output reg         px_valid = 0,
-    output reg  [31:0] price    = 0,
+    output reg  [63:0] price    = 0,
     output reg         done     = 0,
     output reg         ok       = 0
 );
@@ -71,7 +71,7 @@ module itch_parser (
 
             if (i >= 6'd11 && i <= 6'd18) ref_num <= {ref_num[55:0], data};
             if (i >= 6'd20 && i <= 6'd23) shares  <= {shares[23:0], data};
-            if (i >= 6'd32 && i <= 6'd35) price   <= {price[23:0], data};
+            if (i >= 6'd32 && i <= 6'd35) price   <= {32'd0, price[23:0], data};
 
             if (i == 6'd31 && hit && data == sym_b) begin
                 trig <= 1'b1;

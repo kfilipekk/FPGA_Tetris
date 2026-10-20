@@ -1,3 +1,5 @@
+import os
+
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, FallingEdge
@@ -6,9 +8,16 @@ import model as m
 from feed_util import spi_capture
 
 
+V = os.environ.get("VENUE", "nasdaq")
+
+
 def split(frame):
-    ref = int.from_bytes(frame[11:19], "big")
-    ts = int.from_bytes(frame[5:11], "big")
+    if V == "lse":
+        ref = int.from_bytes(frame[6:14], "little")
+        ts = int.from_bytes(frame[2:6], "little")
+    else:
+        ref = int.from_bytes(frame[11:19], "big")
+        ts = int.from_bytes(frame[5:11], "big")
     return (ref >> 48) & 0xFF, ref & 0xFFFFFFFF, ts
 
 
@@ -34,7 +43,7 @@ async def stream_then_burst(dut):
     for i, f in enumerate(frames):
         kind, seq, ts = split(f)
         assert seq == i
-        assert f == m.gen_message(seq, kind, ts), i
+        assert f == m.gen_message(seq, kind, ts, venue=V), i
         kinds.append(kind)
     k = kinds.index(1)
     assert 30 <= k <= 31

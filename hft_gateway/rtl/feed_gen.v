@@ -1,8 +1,9 @@
-//on-chip itch feed over spi: a hashed stream, and a scripted burst on go
-//order ref is {0, kind, 0, seq}
+//on-chip feed over spi: a hashed stream, and a scripted burst on go
+//venue 0 itch add orders, 1 mitch add orders. order ref is {0, kind, 0, seq}
 `default_nettype none
 
 module feed_gen #(
+    parameter        VENUE    = 0,
     parameter        HALF     = 16,       //843.75 khz sck
     parameter        GAP      = 2700000,  //100 ms
     parameter        SCEN_GAP = 135000,   //5 ms
@@ -79,19 +80,40 @@ module feed_gen #(
     reg  [5:0]  nb;
 
     wire [31:0] fcs = ~crc ^ {31'd0, bad};
+    wire [31:0] inst = 32'd1001 + {30'd0, sym};
+    wire [63:0] px8  = {32'd0, price} * 64'd10000;   //8 decimals
 
+    localparam [5:0] FS   = VENUE ? 6'd44 : 6'd36;   //first fcs byte
+    localparam [5:0] LASTB = FS + 6'd3;
+
+    reg [7:0] b_itch, b_mitch;
     always @* begin
-        if (nb == 6'd0)       b = "A";
-        else if (nb == 6'd1)  b = 8'd0;
-        else if (nb == 6'd2)  b = {6'd0, sym} + 8'd1;
-        else if (nb <= 6'd4)  b = 8'd0;
-        else if (nb <= 6'd10) b = ts[8*(10 - nb) +: 8];
-        else if (nb <= 6'd18) b = ref_num[8*(18 - nb) +: 8];
-        else if (nb == 6'd19) b = side_s ? "S" : "B";
-        else if (nb <= 6'd23) b = shares[8*(23 - nb) +: 8];
-        else if (nb <= 6'd31) b = stock[8*(31 - nb) +: 8];
-        else if (nb <= 6'd35) b = price[8*(35 - nb) +: 8];
-        else                  b = fcs[8*(nb - 36) +: 8];
+        if (nb == 6'd0)       b_itch = "A";
+        else if (nb == 6'd1)  b_itch = 8'd0;
+        else if (nb == 6'd2)  b_itch = {6'd0, sym} + 8'd1;
+        else if (nb <= 6'd4)  b_itch = 8'd0;
+        else if (nb <= 6'd10) b_itch = ts[8*(10 - nb) +: 8];
+        else if (nb <= 6'd18) b_itch = ref_num[8*(18 - nb) +: 8];
+        else if (nb == 6'd19) b_itch = side_s ? "S" : "B";
+        else if (nb <= 6'd23) b_itch = shares[8*(23 - nb) +: 8];
+        else if (nb <= 6'd31) b_itch = stock[8*(31 - nb) +: 8];
+        else                  b_itch = price[8*(35 - nb) +: 8];
+
+        if (nb == 6'd0)       b_mitch = 8'd44;
+        else if (nb == 6'd1)  b_mitch = "A";
+        else if (nb <= 6'd5)  b_mitch = ts[8*(nb - 2) +: 8];
+        else if (nb <= 6'd13) b_mitch = ref_num[8*(nb - 6) +: 8];
+        else if (nb == 6'd14) b_mitch = side_s ? "S" : "B";
+        else if (nb <= 6'd18) b_mitch = shares[8*(nb - 15) +: 8];
+        else if (nb <= 6'd22) b_mitch = inst[8*(nb - 19) +: 8];
+        else if (nb <= 6'd24) b_mitch = 8'd0;
+        else if (nb <= 6'd32) b_mitch = px8[8*(nb - 25) +: 8];
+        else if (nb == 6'd33) b_mitch = 8'd0;
+        else                  b_mitch = " ";
+
+        if (nb >= FS)  b = fcs[8*(nb - FS) +: 8];
+        else if (VENUE) b = b_mitch;
+        else           b = b_itch;
     end
 
     localparam IDLE = 3'd0, LEAD = 3'd1, LOW = 3'd2, HIGH = 3'd3, TAIL = 3'd4;
@@ -107,7 +129,7 @@ module feed_gen #(
     reg        pend = 0;
 
     wire half = hc == HMAX[HW-1:0];
-    wire load = half && (state == LEAD || (state == HIGH && bitn == 0 && bi != 6'd39));
+    wire load = half && (state == LEAD || (state == HIGH && bitn == 0 && bi != LASTB));
 
     always @* begin
         nb = (state == LEAD) ? 6'd0 : bi + 1'b1;
@@ -116,7 +138,7 @@ module feed_gen #(
     crc32 u_crc (
         .clk (clk),
         .init(state == IDLE),
-        .en  (load && nb < 6'd36),
+        .en  (load && nb < FS),
         .d   (b),
         .c   (crc)
     );
@@ -164,7 +186,7 @@ module feed_gen #(
                     mosi  <= sh[6];
                     state <= LOW;
                 end else
-                    state <= (bi == 6'd39) ? TAIL : LOW;
+                    state <= (bi == LASTB) ? TAIL : LOW;
             end
             default: if (half) begin
                 cs_n  <= 1'b1;
