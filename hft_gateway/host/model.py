@@ -22,16 +22,12 @@ VENUES = {
 for _v in VENUES.values():
     _s = _v["scale"]
     _v.update(limit=1500000 * _s, px_lo=1000000 * _s, px_hi=2000000 * _s,
-              max_notional=500000000 * _s, center=1500000 * _s)
+              max_notional=500000000 * _s)
 
 SYMBOL = VENUES["nasdaq"]["symbol"]
 LIMIT = VENUES["nasdaq"]["limit"]
-PX_LO, PX_HI = VENUES["nasdaq"]["px_lo"], VENUES["nasdaq"]["px_hi"]
-MAX_NOTIONAL = VENUES["nasdaq"]["max_notional"]
-CENTER = VENUES["nasdaq"]["center"]
 ITCH_LEN = 36
-OUCH_LEN = 49
-FRAME_LEN = OUCH_LEN + 4
+FRAME_LEN = 53
 
 
 def fcs(payload):
@@ -227,9 +223,6 @@ def parse_order(payload, venue="nasdaq"):
         return dict(token=token, side=side, qty=qty, stock=inst(instrument), price=price)
     t, token, side, qty, stock, price = struct.unpack(">c14scI8sI", payload[:32])
     return dict(token=token, side=side, qty=qty, stock=stock, price=price)
-
-
-parse_ouch = parse_order
 
 
 def block(msg):
